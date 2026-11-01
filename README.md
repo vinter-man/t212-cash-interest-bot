@@ -63,8 +63,8 @@ A currency, an amount, and a period if you like (a year by default): `/rate EUR 
 The chart reads top to bottom: what the balance has earned after a month, a year and the whole
 period; how the earnings grow; and the first two weeks to the cent, each day drawn as a one-cent
 cup. A day pays out the whole cents and keeps the rest of the cup for tomorrow. The caption
-repeats every number as text. When another source quotes a different rate, a button under the
-answer recalculates at that one.
+repeats the chart's figures as text, all but the cups. When another source quotes a different
+rate, a button under the answer recalculates at that one.
 
 > :godmode: The help centre's rule, as code (`calc/interest.py`):
 >
@@ -126,14 +126,16 @@ say at that moment. `/subscribe` on its own lists your subscriptions; `/unsubscr
 
 ![subscribe](docs/assets/subscribe.png)
 
-> :shipit: No false alarms, by construction (`poller.py`). A check that fails (blocked, timed
-> out, a parser that finds nothing) is recorded and nothing else happens: the last good value
-> stays on show, marked "stale since", and nobody is notified. A change is only a successful
-> check that disagrees with the previous *successful* check of the same source, so a failure in
-> between can neither hide a change nor invent one. A currency appearing in a listing or
-> dropping out of it isn't a change either, and a parser that reads 25% somewhere fails the whole
-> page instead of reporting one bad row. A test plays exactly that sequence (value, outage,
-> same value, unreadable page, new value) and expects one alert.
+> :shipit: A failure never sends an alert (`poller.py`, `Store.record`). A check that fails —
+> blocked, timed out, a parser that finds nothing — is recorded and nothing else happens: the
+> last good value stays on show, marked "stale since", and nobody is notified. A change is only
+> a successful check that disagrees with the previous *successful* check of the same source, so
+> a failure in between can neither hide a change nor invent one. A currency appearing in a
+> listing or dropping out of it isn't a change either, and a parser that reads 25% somewhere
+> fails the whole page instead of reporting one bad row. A test plays exactly that sequence
+> (value, outage, same value, unreadable page, new value) and expects one alert. What this can't
+> catch is a parser reading a plausible wrong number, which is what the saved-page tests and the
+> nightly live check are for.
 
 ### <a name="errors"></a> When you type something odd
 
@@ -189,7 +191,8 @@ an answer, so that source is left alone until the next cycle.
 > pretend to be a browser. It still asks every six hours (so the day the site lets it in,
 > nothing needs changing) and records "HTTP 403, bot check". It keeps showing the last value it
 > has, marked stale, and the owner can send it the page saved from their own browser: it reads
-> the same JSON from the file and records it as "a page saved in a browser". The website parsers
+> the same JSON from the file and shows it as "a saved page sent" on that day. A saved page
+> carries no date, so it never alerts subscribers; the owner's reply lists what differs. The website parsers
 > are tested on exactly such saved pages ([tests/fixtures](tests/fixtures)), and the nightly live
 > check skips the website when it is challenged rather than reporting a broken parser.
 >
@@ -202,9 +205,12 @@ an answer, so that source is left alone until the next cycle.
 
 ## <a name="tax"></a> Tax
 
-The bot calculates interest before tax. Trading 212 withholds tax only for residents of Cyprus
-(17% special defence contribution and 2.65% GHS); everyone else is paid gross and declares it at
-home. `/about` says the same.
+The bot shows interest before tax. For the EU company, Trading 212's
+[tax article](https://helpcentre.trading212.com/hc/en-us/articles/15472255836957-Do-I-have-to-pay-taxes-on-the-earned-interest-on-cash)
+says tax residents of Cyprus pay a 17% withholding tax and 2.65% GHS on the interest, and
+everyone else is paid gross (their own country may still tax it). For the UK company, ISA
+interest is tax-free and the rest depends on where you are tax resident. `/about` says the same,
+for the region the bot follows.
 
 ---
 ---
@@ -239,7 +245,7 @@ file (every check of every source, and the subscriptions) lives in the `data` vo
 [`deploy/README.md`](deploy/README.md): a push to `main` runs the CI gate, and only then SSHes in
 with a key that can run one script. That script deploys the tested commit, waits for the
 healthcheck and rolls back if the new version doesn't come up. A restart doesn't poll early: the
-next poll is six hours after the last one in the database.
+next poll is six hours after the last one in the database, or straight away if that is past.
 
 ---
 ---

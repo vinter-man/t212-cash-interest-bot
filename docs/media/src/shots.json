@@ -5,7 +5,7 @@
     },
     {
       "in": {
-        "html": "<b>€20,000 · EUR 2.5% · 5 years</b>\nRate: trading212.com/interest-on-cash, a page saved in a browser, 01 Nov 2026\n\nDay 1: €1.35 paid, €0.0021 carried to day 2.\n1 month: +€40.60 · 1 year: +€499.65 · 5 years: +€2,627.78\nBalance after 5 years: <b>€22,627.78</b>\n\nRounding down: €0.0012 still carried (paid once it makes a cent); €0.00066 of compounding missed meanwhile.\n⚠️ App Store and Google Play say 2.2%. Tap below to recalculate.\n\n<i>Before tax. Unofficial: not affiliated with Trading 212, and not financial advice.</i> /about",
+        "html": "<b>€20,000 · EUR 2.5% · 5 years</b>\nRate: trading212.com/interest-on-cash, a saved page sent 01 Nov 2026\n\nDay 1: €1.35 paid, €0.0021 carried to day 2.\n1 month: +€40.60 · 1 year: +€499.65 · 5 years: +€2,627.78\nBalance after 5 years: <b>€22,627.78</b>\n\nRounding down: €0.0011 still carried (paid once it makes a cent); €0.00066 of compounding missed meanwhile.\n⚠️ App Store and Google Play say 2.2%. Tap below to recalculate.\n\n<i>Before tax. Unofficial: not affiliated with Trading 212, and not financial advice.</i> /about",
         "keyboard": [
           [
             "2.2% · iOS, Play"
@@ -21,7 +21,7 @@
     },
     {
       "in": {
-        "html": "<b>€20,000 · EUR 2.2% · 5 years</b>\nRate: App Store, 01 Nov 2026\n\nDay 1: €1.19 paid, €0.0016 carried to day 2.\n1 month: +€35.77 · 1 year: +€439.69 · 5 years: +€2,298.62\nBalance after 5 years: <b>€22,298.62</b>\n\nRounding down: €0.00041 still carried (paid once it makes a cent); €0.00058 of compounding missed meanwhile.\n⚠️ the website says 2.5%. Tap below to recalculate.\n\n<i>Before tax. Unofficial: not affiliated with Trading 212, and not financial advice.</i> /about",
+        "html": "<b>€20,000 · EUR 2.2% · 5 years</b>\nRate: App Store, 01 Nov 2026\n\nDay 1: €1.19 paid, €0.0016 carried to day 2.\n1 month: +€35.77 · 1 year: +€439.69 · 5 years: +€2,298.62\nBalance after 5 years: <b>€22,298.62</b>\n\nRounding down: €0.00041 still carried (paid once it makes a cent); €0.00057 of compounding missed meanwhile.\n⚠️ The website says 2.5%. Tap below to recalculate.\n\n<i>Before tax. Unofficial: not affiliated with Trading 212, and not financial advice.</i> /about",
         "keyboard": [
           [
             "2.5% · site, cards"
@@ -37,7 +37,7 @@
     },
     {
       "in": {
-        "html": "<b>$10 · USD 3.4% · 30 days</b>\nRate: trading212.com/interest-on-cash, a page saved in a browser, 01 Nov 2026\n\nA day earns $0.00092, under a cent: the first payment arrives on day 11.\n1 month: +$0.02 · 1 year: +$0.33\nBalance after 30 days: <b>$10.02</b>\n\nRounding down: $0.0075 still carried (paid once it makes a cent); $0.000012 of compounding missed meanwhile.\n⚠️ App Store and Google Play say 3.3%. Tap below to recalculate.\n\n<i>Before tax. Unofficial: not affiliated with Trading 212, and not financial advice.</i> /about",
+        "html": "<b>$10 · USD 3.4% · 30 days</b>\nRate: trading212.com/interest-on-cash, a saved page sent 01 Nov 2026\n\nA day earns $0.00091, under a cent: the first payment arrives on day 11.\n1 month: +$0.02 · 1 year: +$0.33\nBalance after 30 days: <b>$10.02</b>\n\nRounding down: $0.0074 still carried (paid once it makes a cent); $0.000011 of compounding missed meanwhile.\n⚠️ App Store and Google Play say 3.3%. Tap below to recalculate.\n\n<i>Before tax. Unofficial: not affiliated with Trading 212, and not financial advice.</i> /about",
         "keyboard": [
           [
             "3.3% · iOS, Play"
@@ -104,7 +104,7 @@
     },
     {
       "in": {
-        "html": "Subscribed to EUR: I will write when any source changes its EUR rate. Now: 2.5% (trading212.com/interest-on-cash, a page saved in a browser, 01 Nov 2026).\n<code>/unsubscribe EUR</code> to stop.",
+        "html": "Subscribed to EUR: I will write when any source changes its EUR rate. Now: 2.5% (trading212.com/interest-on-cash, a saved page sent 01 Nov 2026).\n<code>/unsubscribe EUR</code> to stop.",
         "keyboard": []
       }
     },
