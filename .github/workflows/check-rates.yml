@@ -1,0 +1,28 @@
+name: Check rates now
+
+# A button: what every source says right now, as a table in this run's summary.
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: 'Whose rates: EU (CySEC) or UK (FCA)'
+        type: choice
+        options: [EU, UK]
+        default: EU
+
+permissions:
+  contents: read
+
+jobs:
+  rates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Rates
+        env:
+          REGION: ${{ inputs.region }}
+        run: uv run python scripts/check_rates.py --region "$REGION" | tee -a "$GITHUB_STEP_SUMMARY"

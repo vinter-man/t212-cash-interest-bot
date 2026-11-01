@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check .
+      - name: Format
+        run: uv run ruff format --check .
+      - name: Prettier (YAML, JSON, TypeScript)
+        run: npx --yes prettier@3.9.10 --check .
+      - name: Types
+        run: uv run mypy
+      - name: Tests (unit, integration, end to end)
+        run: uv run pytest -q --cov --cov-report=term-missing
+      - name: The arithmetic is covered completely
+        run: uv run coverage report --include='cash_interest/calc/*' --fail-under=100
+      - name: Shell
+        run: shellcheck deploy/*.sh
+
+  image:
+    # Only the server builds the image otherwise; a COPY that misses a file must fail here.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: docker build --build-arg GIT_SHA="$GITHUB_SHA" -t t212-cash-interest-bot:ci .
+      - name: Smoke-test the installed package
+        # -P keeps /app off sys.path, so this imports the wheel in site-packages, as production
+        # does, and draws a chart with the fonts that ship inside it.
+        run: |
+          docker run --rm --network none --read-only --tmpfs /tmp -e BOT_TOKEN=0:x t212-cash-interest-bot:ci python -P -c '
+          import importlib, pkgutil, cash_interest
+          for m in pkgutil.walk_packages(cash_interest.__path__, "cash_interest."):
+              importlib.import_module(m.name)
+          from datetime import date, datetime, UTC
+          from decimal import Decimal
+          from cash_interest.answer import answer
+          from cash_interest.board import Quote
+          from cash_interest.calc import Period
+          from cash_interest.charts import rate_chart
+          from cash_interest.sources import Region, SourceId
+          quote = Quote(SourceId.SITE, Decimal("0.025"), datetime.now(UTC), False)
+          png = rate_chart(answer("EUR", Decimal(20000), Period(5, "y"), quote, date.today()), Region.EU)
+          assert png.startswith(b"\x89PNG"), png[:8]
+          print("ok:", len(png), "bytes")
+          '
+
+  deploy:
+    # Only after both jobs are green, only from main, never from a pull request.
+    needs: [check, image]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://t.me/t212_cash_interest_bot
+    steps:
+      - name: Deploy over SSH
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+        run: |
+          test -n "$HOST" || { echo "DEPLOY_HOST is not set"; exit 1; }
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Pinned host key, not accept-new: the first connection is the one worth protecting.
+          printf '%s\n' "$HOST_KEY" > ~/.ssh/known_hosts
+          # The forced command runs deploy.sh whatever is asked; the sha tells it which tested
+          # commit to deploy, so two quick pushes cannot ship an untested one.
+          ssh -o BatchMode=yes -o ConnectTimeout=15 -i ~/.ssh/id_ed25519 "$USER@$HOST" "$GITHUB_SHA"

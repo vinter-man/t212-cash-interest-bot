@@ -1,0 +1,42 @@
+name: Nightly live check
+
+# Once a day the parsers meet the real pages. A failure means a page changed under its parser
+# (or a rate left 0–15%), and an issue says so, with what every source says at that moment.
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Live smoke test
+        run: uv run pytest -m live -v -rs tests/live
+      - name: Snapshot of every source
+        if: failure()
+        # The table is the issue's body; if even that fails, the issue still says where to look.
+        run: uv run python scripts/check_rates.py > snapshot.md || echo "The snapshot itself failed." > snapshot.md
+      - name: Open an issue, or add to the open one
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create live-check --color B60205 --description "The nightly live check failed" --force
+          body="$(printf 'The live check failed: %s\n\n%s\n' "$RUN_URL" "$(cat snapshot.md)")"
+          open="$(gh issue list --state open --label live-check --json number --jq '.[0].number // empty')"
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "$body"
+          else
+            gh issue create --title "Live check failed: a source changed under its parser" --label live-check --body "$body"
+          fi

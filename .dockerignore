@@ -1,0 +1,15 @@
+.env
+.git
+.github
+.venv
+.hypothesis
+data
+docs
+tests
+scripts
+deploy
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/node_modules

@@ -1,0 +1,10 @@
+# Python is formatted by ruff; Markdown is prose and keeps its hand-made layout.
+*.md
+uv.lock
+.venv/
+data/
+node_modules/
+docs/media/out/
+docs/media/package-lock.json
+docs/media/src/shots.json
+tests/fixtures/
