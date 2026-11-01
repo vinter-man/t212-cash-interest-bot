@@ -54,7 +54,8 @@ def source_line(state: SourceState) -> str:
     if state.checked_at is None:
         return f"{name}: not checked yet"
     if state.failing_since is None:
-        return f"{name}: checked {when(state.checked_at)}"
+        sent = state.via == "upload"  # the bot read a page the owner sent; it checked nothing
+        return f"{name}: {'saved page sent' if sent else 'checked'} {when(state.checked_at)}"
     problem = escape(state.problem or "failed")
     if not state.rates:
         return f"{name}: no value since {when(state.failing_since)} ({problem})"
@@ -158,9 +159,12 @@ def _checked(state: SourceState) -> str:
     """When a source was last asked and, if that failed, why and how old its value is."""
     if state.checked_at is None:
         return "not checked yet"
+    if state.failing_since is None and state.via == "upload":
+        return f"saved page sent {when(state.checked_at)} UTC"
     text = f"checked {when(state.checked_at)} UTC"
     if state.failing_since is not None and state.ok_at is not None:
-        text += f" ({escape(state.problem or 'failed')}; this value is from {when(state.ok_at)} UTC)"
+        source = "a saved page sent" if state.via == "upload" else "a check at"
+        text += f" ({escape(state.problem or 'failed')}; this value is from {source} {when(state.ok_at)} UTC)"
     return text
 
 

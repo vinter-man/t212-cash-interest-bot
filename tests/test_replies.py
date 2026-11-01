@@ -33,6 +33,24 @@ class TestSourceLine:
         line = replies.source_line(state(SourceId.APP_STORE, STORE_EU, failing_since=LATER, problem="HTTP 502"))
         assert line == "iOS: stale since 02 Nov 02:30 (HTTP 502); value from the last good check, 01 Nov 20:30"
 
+    def test_a_saved_page_is_not_a_check(self) -> None:
+        line = replies.source_line(state(SourceId.SITE, SITE_EU, via="upload"))
+        assert line == "site: saved page sent 01 Nov 20:30"
+
+    def test_diff_says_where_a_value_came_from(self) -> None:
+        later = NOW + timedelta(hours=6)
+        states = {
+            SourceId.SITE: state(SourceId.SITE, SITE_EU, via="upload"),
+            SourceId.CARDS: state(
+                SourceId.CARDS, SITE_EU, failing_since=later, problem="HTTP 403, bot check", via="upload"
+            ),
+            SourceId.APP_STORE: state(SourceId.APP_STORE, STORE_EU, failing_since=later, problem="HTTP 502"),
+        }
+        text = replies.diff(states, Region.EU)
+        assert "2.5% · trading212.com/interest-on-cash · saved page sent 01 Nov 20:30 UTC" in text
+        assert "HTTP 403, bot check; this value is from a saved page sent 01 Nov 20:30 UTC" in text
+        assert "HTTP 502; this value is from a check at 01 Nov 20:30 UTC" in text
+
     def test_problems_are_escaped(self) -> None:
         line = replies.source_line(state(SourceId.SITE, {}, failing_since=NOW, problem="<script>"))
         assert "&lt;script&gt;" in line
