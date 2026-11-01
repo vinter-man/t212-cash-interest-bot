@@ -29,9 +29,7 @@ async def fetch(client: httpx.AsyncClient) -> bytes:
 async def test_ok(client: httpx.AsyncClient) -> None:
     route = respx.get(URL).respond(200, content=b"hello")
     assert await fetch(client) == b"hello"
-    request = route.calls.last.request
-    assert request.headers["User-Agent"] == USER_AGENT
-    assert "github.com" in USER_AGENT
+    assert route.calls.last.request.headers["User-Agent"] == USER_AGENT
 
 
 @respx.mock
@@ -45,7 +43,12 @@ async def test_refusals_are_not_retried(client: httpx.AsyncClient, status: int, 
 
 @respx.mock
 @pytest.mark.parametrize(
-    ("name", "status"), [("cloudflare-access-denied.html", 403), ("cloudflare-challenge.html", 503)]
+    ("name", "status"),
+    [
+        ("cloudflare-access-denied.html", 403),
+        ("cloudflare-challenge.html", 403),  # as it was saved
+        ("cloudflare-challenge.html", 503),  # the same page as a 503 must not be retried either
+    ],
 )
 async def test_cloudflare_pages_are_a_bot_check(client: httpx.AsyncClient, name: str, status: int) -> None:
     route = respx.get(URL).respond(status, content=fixture(f"website/{name}"))
@@ -93,16 +96,15 @@ async def test_not_found_is_not_retried(client: httpx.AsyncClient) -> None:
 
 
 @respx.mock
-async def test_backoff_doubles(client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_backoff_doubles(client: httpx.AsyncClient) -> None:
     waits: list[float] = []
 
     async def sleep(seconds: float) -> None:
         waits.append(seconds)
 
-    monkeypatch.setattr("cash_interest.sources.base.asyncio.sleep", sleep)
     respx.get(URL).respond(500)
     with pytest.raises(Unavailable):
-        await get(client, URL)
+        await get(client, URL, sleep=sleep)
     assert waits == [2.0, 4.0]
 
 

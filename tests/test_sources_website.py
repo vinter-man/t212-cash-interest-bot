@@ -113,8 +113,9 @@ class TestBrokenPages:
     def test_an_implausible_rate_fails_the_whole_page(self) -> None:
         """25% is a parser reading the wrong field: no rate from this page is trusted."""
         page = html().replace('"T212CY":{"CZK":0.03', '"T212CY":{"CZK":0.25', 1)
-        with pytest.raises(ParseError, match="implausible"):
+        with pytest.raises(ParseError) as caught:
             parse(page)
+        assert str(caught.value) == "implausible rate for CZK: 25%"
 
     def test_a_rate_written_as_text(self) -> None:
         page = html().replace('"T212CY":{"CZK":0.03', '"T212CY":{"CZK":"3%"', 1)

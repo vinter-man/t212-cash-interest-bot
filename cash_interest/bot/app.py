@@ -1,7 +1,8 @@
 """Wires the bot together and runs it, with two jobs beside the polling loop:
 
 - `poll`: read every source, every six hours (APScheduler). After a restart the next run is six
-  hours after the last one, not "now", so a day of deploys does not mean a day of requests.
+  hours after the last one recorded (straight away only if that is already past), so a day of
+  deploys does not mean a day of requests.
 - `heartbeat`: prove the bot can still reach Telegram, for the container healthcheck.
 """
 
@@ -70,14 +71,16 @@ def build_dispatcher(services: Services) -> Dispatcher:
     return dp
 
 
-def make_notifier(bot: Bot, services: Services) -> Callable[[Sequence[Change]], Awaitable[None]]:
+def make_notifier(
+    bot: Bot, services: Services, sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
+) -> Callable[[Sequence[Change]], Awaitable[None]]:
     """Sends each subscriber one message per changed currency."""
 
     async def send(chat_id: int, text: str) -> None:
         try:
             await bot.send_message(chat_id, text)
         except TelegramRetryAfter as error:
-            await asyncio.sleep(error.retry_after)
+            await sleep(error.retry_after)
             await bot.send_message(chat_id, text)
 
     async def notify(changes: Sequence[Change]) -> None:
@@ -95,7 +98,7 @@ def make_notifier(bot: Bot, services: Services) -> Callable[[Sequence[Change]], 
                     log.info("dropped the subscriptions of a chat that blocked the bot")
                 except TelegramAPIError as error:
                     log.warning("alert not delivered: %s", type(error).__name__)
-                await asyncio.sleep(SEND_GAP)
+                await sleep(SEND_GAP)
 
     return notify
 
@@ -121,20 +124,32 @@ async def introduce(bot: Bot) -> None:
     """The command menu and the profile texts, kept in step with the code on every start.
 
     Each is read first and written only if it differs: Telegram rate-limits these calls (the
-    name hardest), and a deploy is a restart. A failure costs a stale profile, never the bot.
+    name hardest), and a deploy is a restart. Each is tried on its own, and a failure costs that
+    one stale field, never the bot.
     """
-    try:
-        commands = [BotCommand(command=c, description=d) for c, d in COMMANDS]
-        if await bot.get_my_commands() != commands:
-            await bot.set_my_commands(commands)
+    commands = [BotCommand(command=c, description=d) for c, d in COMMANDS]
+
+    async def name() -> None:
         if (await bot.get_my_name()).name != NAME:
             await bot.set_my_name(NAME)
+
+    async def short_description() -> None:
         if (await bot.get_my_short_description()).short_description != SHORT_DESCRIPTION:
             await bot.set_my_short_description(SHORT_DESCRIPTION)
+
+    async def description() -> None:
         if (await bot.get_my_description()).description != DESCRIPTION:
             await bot.set_my_description(DESCRIPTION)
-    except TelegramAPIError as error:
-        log.warning("could not update the bot's profile: %s", error)
+
+    async def menu() -> None:
+        if await bot.get_my_commands() != commands:
+            await bot.set_my_commands(commands)
+
+    for update in (menu, name, short_description, description):
+        try:
+            await update()
+        except TelegramAPIError as error:
+            log.warning("could not update the bot's %s: %s", update.__name__.replace("_", " "), error)
 
 
 def make_bot(settings: Settings) -> Bot:
@@ -151,7 +166,7 @@ async def run(settings: Settings) -> None:
     store = await Store.open(settings.db_path)
     bot = make_bot(settings)
     services = Services(store, settings.region, owner_id=settings.owner_id, poll_hours=POLL_HOURS)
-    services.notify = make_notifier(bot, services)
+    notify = make_notifier(bot, services)
     dp = build_dispatcher(services)
     scheduler = AsyncIOScheduler(timezone=UTC)
     heart: asyncio.Task[None] | None = None
@@ -160,7 +175,7 @@ async def run(settings: Settings) -> None:
             sources = all_sources(http, settings.region)
 
             async def poll_job() -> None:
-                await poll(store, sources, services.clock, services.notify)
+                await poll(store, sources, services.clock, notify)
 
             start_at = first_run(await store.last_check(settings.region), services.clock())
             log.info("first poll at %s", start_at.isoformat(timespec="minutes"))

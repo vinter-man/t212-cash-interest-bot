@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -117,13 +117,14 @@ def to_rates(found: dict[str, Decimal], source: SourceId, region: Region, fetche
     """`found` as Rates; an implausible number fails the whole page, never just its row."""
     if not found:
         raise ParseError("no rates on the page")
-    try:
-        return [
-            Rate(ccy=ccy, apy=apy, source=source, region=region, fetched_at=fetched_at)
-            for ccy, apy in sorted(found.items())
-        ]
-    except ValueError as error:
-        raise ParseError(f"implausible value: {error}") from error
+    low, high = PLAUSIBLE
+    for ccy, apy in sorted(found.items()):
+        if not low <= apy <= high:
+            raise ParseError(f"implausible rate for {ccy}: {(apy * 100).normalize():f}%")
+    return [
+        Rate(ccy=ccy, apy=apy, source=source, region=region, fetched_at=fetched_at)
+        for ccy, apy in sorted(found.items())
+    ]
 
 
 def utcnow() -> datetime:
@@ -138,7 +139,14 @@ def _is_bot_check(response: httpx.Response) -> bool:
     return "Just a moment..." in head or "challenge-platform" in response.text[-4000:]
 
 
-async def get(client: httpx.AsyncClient, url: str, *, attempts: int = ATTEMPTS, backoff: float = BACKOFF) -> bytes:
+async def get(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    attempts: int = ATTEMPTS,
+    backoff: float = BACKOFF,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> bytes:
     """One GET with a short, polite retry: network errors and 5xx only, waiting 2 s, then 4 s.
 
     A 403 or 429 is an answer, not an accident, so it is never retried.
@@ -161,7 +169,7 @@ async def get(client: httpx.AsyncClient, url: str, *, attempts: int = ATTEMPTS, 
         if attempt < attempts:
             delay = backoff * 2 ** (attempt - 1)
             log.info("%s: %s, retrying in %.0f s", url, problem, delay)
-            await asyncio.sleep(delay)
+            await sleep(delay)
     raise problem
 
 

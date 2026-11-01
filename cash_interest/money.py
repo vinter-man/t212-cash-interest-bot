@@ -2,30 +2,31 @@
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 
 SYMBOLS = {"EUR": "€", "GBP": "£", "USD": "$"}
 
 
-def _grouped(amount: Decimal, places: int) -> str:
+def _grouped(amount: Decimal, places: int, rounding: str = ROUND_HALF_UP) -> str:
     step = Decimal(1).scaleb(-places)
-    return f"{amount.quantize(step, rounding=ROUND_HALF_UP):,.{places}f}"
+    return f"{amount.quantize(step, rounding=rounding):,.{places}f}"
 
 
-def money(amount: Decimal, ccy: str, places: int = 2) -> str:
+def money(amount: Decimal, ccy: str, places: int = 2, rounding: str = ROUND_HALF_UP) -> str:
     """€20,000.00, £1.35, PLN 1,234.56. A negative zero never shows as "-€0.00"."""
-    text = _grouped(abs(amount), places)
+    text = _grouped(abs(amount), places, rounding)
     sign = "-" if amount < 0 and text.strip("0.,") else ""
     symbol = SYMBOLS.get(ccy)
     return f"{sign}{symbol}{text}" if symbol else f"{sign}{ccy} {text}"
 
 
 def fraction(amount: Decimal, ccy: str) -> str:
-    """Less than a cent, to two significant digits: €0.0046, €0.000037; zero is €0."""
+    """Less than a cent, to two significant digits: €0.0046, €0.000037; zero is €0. Cut rather
+    than rounded, so a fraction just short of a cent never shows as a whole one."""
     if amount == 0:
         return money(Decimal(0), ccy, 0)
     places = max(2, min(8, 1 - amount.adjusted()))
-    return money(amount, ccy, places)
+    return money(amount, ccy, places, ROUND_DOWN)
 
 
 def whole(amount: Decimal, ccy: str) -> str:

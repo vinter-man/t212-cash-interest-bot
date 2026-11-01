@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -58,6 +59,18 @@ async def test_regions_and_sources_are_kept_apart(store: Store) -> None:
 async def test_rates_must_belong_to_the_source_they_are_recorded_for(store: Store) -> None:
     with pytest.raises(ValueError, match="another source"):
         await store.record(SourceId.SITE, Region.EU, rates(APP, {"EUR": "0.022"}), at=NOW)
+
+
+async def test_a_check_is_written_whole_or_not_at_all(store: Store) -> None:
+    """If the rates cannot be written, the check row goes too, or it would become the baseline
+    the next check is compared with."""
+    await store.record(APP, Region.EU, rates(APP, {"EUR": "0.022"}), at=NOW)
+    twice = rates(APP, {"EUR": "0.030"}, at=LATER) * 2
+    with pytest.raises(sqlite3.IntegrityError):
+        await store.record(APP, Region.EU, twice, at=LATER)
+    await store.subscribe(1, "EUR", at=LATER)  # the next write must not commit half a check
+    state = await store.state(APP, Region.EU)
+    assert (state.ok_at, state.rates) == (NOW, {"EUR": Decimal("0.022")})
 
 
 async def test_a_failure_needs_a_failing_status(store: Store) -> None:

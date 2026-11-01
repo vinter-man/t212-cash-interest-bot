@@ -126,16 +126,20 @@ class Store:
         async with self._writing:
             previous = await self._last_ok(source, region)
             before = await self._rates(previous[0]) if previous else {}
-            cursor = await self.db.execute(
-                "INSERT INTO checks (source, region, at, status, via) VALUES (?, ?, ?, 'ok', ?)",
-                (source, region, at.isoformat(), via),
-            )
-            check_id = cursor.lastrowid
-            await self.db.executemany(
-                "INSERT INTO rates (check_id, ccy, apy) VALUES (?, ?, ?)",
-                [(check_id, r.ccy, str(r.apy.normalize())) for r in rates],
-            )
-            await self.db.commit()
+            try:
+                cursor = await self.db.execute(
+                    "INSERT INTO checks (source, region, at, status, via) VALUES (?, ?, ?, 'ok', ?)",
+                    (source, region, at.isoformat(), via),
+                )
+                await self.db.executemany(
+                    "INSERT INTO rates (check_id, ccy, apy) VALUES (?, ?, ?)",
+                    [(cursor.lastrowid, r.ccy, str(r.apy.normalize())) for r in rates],
+                )
+                await self.db.commit()
+            except BaseException:
+                # A check without its rates would become the baseline for the next comparison.
+                await self.db.rollback()
+                raise
         return [
             Change(source, region, r.ccy, before[r.ccy], r.apy, at)
             for r in rates

@@ -156,6 +156,7 @@ class TestYears:
         result is within rounding of the closed form."""
         principal, apy = D("20000.00"), D("0.025")
         sim = simulate(principal, apy, MAX_DAYS)
+        assert all(d.paid + d.carried == d.accrued for d in sim.days)
         assert sim.balance == principal + sum(d.paid for d in sim.days)
         assert sum(d.paid for d in sim.days) + sim.carried == sum(d.interest for d in sim.days)
         # Rounding can only delay money, and never by more than what a cent per day would earn.

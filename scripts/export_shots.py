@@ -63,6 +63,11 @@ async def _seeded() -> Services:
     return Services(store, REGION, clock=lambda: NOW)
 
 
+def _args(command: str) -> str:
+    """What aiogram hands a command handler: the text after `/rate`."""
+    return command.partition(" ")[2]
+
+
 def _photo_reply(reply: Reply, photo: str, public: Path) -> dict[str, Any]:
     if reply.chart is None:
         raise RuntimeError(f"{photo}: the chart did not render")
@@ -71,14 +76,14 @@ def _photo_reply(reply: Reply, photo: str, public: Path) -> dict[str, Any]:
 
 
 async def _rate(services: Services, text: str, photo: str, public: Path, prefer: SourceId | None = None) -> Shot:
-    query = parse_query(text, await known_currencies(services))
+    query = parse_query(_args(text), await known_currencies(services))
     reply = await build_reply(services, query, prefer)
     return [{"out": text}, {"in": _photo_reply(reply, photo, public)}]
 
 
 async def _error(services: Services, text: str) -> Shot:
     try:
-        parse_query(text, await known_currencies(services))
+        parse_query(_args(text), await known_currencies(services))
     except InputError as error:
         return [{"out": text}, {"in": {"html": input_error(error), "keyboard": []}}]
     raise RuntimeError(f"{text!r} was supposed to be an error")
@@ -108,7 +113,7 @@ async def _rates_stale(services: Services) -> Shot:
 
 async def _subscribe(services: Services) -> Shot:
     store = services.store
-    ccy = parse_currency("/subscribe EUR", await known_currencies(services))
+    ccy = parse_currency("EUR", await known_currencies(services))
     new = await store.subscribe(5150, ccy, at=NOW)
     subscribed = replies.subscribed(ccy, new, pick(await store.states(REGION), ccy))
     # Six hours later the App Store listing catches up with the website.

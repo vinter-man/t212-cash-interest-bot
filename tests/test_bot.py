@@ -306,6 +306,18 @@ class TestOtherSourcesButton:
         assert answer.show_alert
         assert not seeded.session.sent()
 
+    async def test_a_three_digit_period_survives_the_round_trip(self, seeded: Env) -> None:
+        await seeded.say("/rate EUR 20k 365d")
+        (photo,) = seeded.session.sent()
+        assert isinstance(photo, SendPhoto)
+        markup = photo.reply_markup
+        assert isinstance(markup, InlineKeyboardMarkup)
+        data = markup.inline_keyboard[0][0].callback_data
+        assert data == "r:EUR:20000.00:365d:app_store"
+        await seeded.send(callback(data))
+        edit = next(c for c in seeded.session.calls if isinstance(c, EditMessageMedia))
+        assert "EUR 2.2% · 365 days" in (edit.media.caption or "")
+
     async def test_a_second_tap_on_the_same_button(self, seeded: Env) -> None:
         seeded.session.fail_with[EditMessageMedia] = TelegramBadRequest(GetMe(), "message is not modified")
         await seeded.send(callback(kb.RateCb(ccy="EUR", amount="100.00", period="1y", source="site").pack()))
@@ -340,7 +352,20 @@ class TestTables:
         await env.say("/rates")
         assert "No source has answered yet" in env.session.last()
         await env.say("/diff")
-        assert "All sources agree" in env.session.last()
+        assert "No source has answered yet, so there is nothing to compare" in env.session.last()
+
+    async def test_one_source_is_not_an_agreement(self, env: Env) -> None:
+        store = env.services.store
+        await store.record(SourceId.APP_STORE, Region.EU, rates(SourceId.APP_STORE, STORE_EU), at=NOW)
+        await env.say("/diff")
+        assert env.session.last() == "Only App Store has answered so far, so there is nothing to compare yet."
+
+    async def test_sources_that_agree(self, env: Env) -> None:
+        store = env.services.store
+        for source in (SourceId.APP_STORE, SourceId.GOOGLE_PLAY):
+            await store.record(source, Region.EU, rates(source, STORE_EU), at=NOW)
+        await env.say("/diff")
+        assert env.session.last().startswith("No disagreement in the EU view")
 
 
 class TestSubscriptions:
@@ -371,48 +396,48 @@ class TestSavedPages:
     def document(self, name: str, size: int | None = None) -> dict[str, Any]:
         return {"document": Document(file_id=name, file_unique_id=name, file_name=name, file_size=size)}
 
-    async def test_owner_upload_is_recorded_and_announced(self, env: Env) -> None:
+    async def test_owner_upload_is_recorded(self, env: Env) -> None:
         env.session.files["interest-on-cash.html"] = fixture("website/interest-on-cash.html")
-        sent: list[object] = []
-
-        async def notify(changes: object) -> None:
-            sent.append(changes)
-
-        env.services.notify = notify
-        await env.send(message(user=OWNER, **self.document("interest-on-cash.html")))
+        await env.send(message(user=OWNER, **self.document("interest-on-cash.html", 2_000)))
         assert env.session.last() == "Recorded 10 rates from trading212.com/interest-on-cash. Nothing changed."
         state = await env.services.store.state(SourceId.SITE, Region.EU)
         assert state.via == "upload"
-        assert not sent
 
-    async def test_a_second_upload_with_a_new_rate_notifies(self, env: Env) -> None:
-        page = fixture("website/cards.html")
-        env.session.files["old"] = page
-        env.session.files["new"] = page.replace(b'"T212CY":{"CZK":0.03', b'"T212CY":{"CZK":0.028')
-        sent: list[object] = []
-
-        async def notify(changes: object) -> None:
-            sent.append(changes)
-
-        env.services.notify = notify
-        await env.send(message(user=OWNER, **self.document("old")))
-        await env.send(message(user=OWNER, **self.document("new")))
-        assert "CZK: 3% → 2.8%" in env.session.last()
-        assert len(sent) == 1
+    async def test_an_upload_tells_the_owner_what_differs_and_alerts_nobody(self, seeded: Env) -> None:
+        """A saved page has no date, so its difference from the last check is the owner's news,
+        not an alert: a subscriber is not woken by a page that may be days old."""
+        await seeded.services.store.subscribe(USER_ID, "CZK", at=NOW)
+        page = fixture("website/cards.html").replace(b'"T212CY":{"CZK":0.03', b'"T212CY":{"CZK":0.028')
+        seeded.session.files["cards.html"] = page
+        await seeded.send(message(user=OWNER, **self.document("cards.html", 2_000)))
+        reply = seeded.session.last()
+        assert "Different from before:\nCZK: 3% → 2.8%" in reply
+        assert reply.endswith("Subscribers were not told.")
+        recipients = [c.chat_id for c in seeded.session.sent()]
+        assert recipients == [OWNER_ID]  # the reply, and no alert to the subscriber
 
     async def test_not_a_saved_page(self, env: Env) -> None:
         env.session.files["notes.html"] = b"<html>shopping list</html>"
-        await env.send(message(user=OWNER, **self.document("notes.html")))
+        await env.send(message(user=OWNER, **self.document("notes.html", 30)))
         assert "I could not read that page: this is not a saved trading212.com" in env.session.last()
 
-    async def test_too_big(self, env: Env) -> None:
-        await env.send(message(user=OWNER, **self.document("huge.html", size=50 * 1024 * 1024)))
-        assert "larger than a saved page" in env.session.last()
+    @pytest.mark.parametrize("size", [50 * 1024 * 1024, None])
+    async def test_too_big_or_of_unknown_size(self, env: Env, size: int | None) -> None:
+        await env.send(message(user=OWNER, **self.document("huge.html", size)))
+        assert "larger than a saved page can be, or of no stated size" in env.session.last()
+        assert not any(isinstance(c, GetFile) for c in env.session.calls)
 
     async def test_only_the_owner(self, env: Env) -> None:
-        await env.send(message(user=USER, **self.document("interest-on-cash.html")))
+        await env.send(message(user=USER, **self.document("interest-on-cash.html", 2_000)))
         assert "I only read text" in env.session.last()
         assert not any(isinstance(c, GetFile) for c in env.session.calls)
+
+
+async def test_plain_text_in_a_group_is_not_a_question(seeded: Env) -> None:
+    group = Update(update_id=next(_ids), message=Message(message_id=next(_ids), date=datetime.now(UTC),
+                   chat=Chat(id=-100, type="supergroup"), from_user=USER, text="nice bot"))  # fmt: skip
+    await seeded.send(group)
+    assert not seeded.session.sent()
 
 
 async def test_a_sticker_gets_a_hint(env: Env) -> None:

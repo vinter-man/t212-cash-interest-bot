@@ -1,4 +1,4 @@
-"""Pure arithmetic: no I/O, no clock, no Telegram. Everything here is covered to 100%."""
+"""Pure arithmetic: no I/O, no clock, no Telegram."""
 
 from cash_interest.calc.interest import (
     CENT,

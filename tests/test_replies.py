@@ -48,7 +48,7 @@ class TestCaption:
     def test_saved_page_and_stale_are_both_said(self) -> None:
         stale = Quote(SourceId.SITE, Decimal("0.025"), NOW, True, "upload")
         caption = replies.rate_caption(answer("EUR", Decimal(100), Period(1, "y"), stale, TODAY), None)
-        assert "Rate: trading212.com/interest-on-cash, a page saved in a browser, 01 Nov 2026 <i>(stale)</i>" in caption
+        assert "Rate: trading212.com/interest-on-cash, a saved page sent 01 Nov 2026 <i>(stale)</i>" in caption
 
     def test_several_other_values(self) -> None:
         states = {
@@ -67,10 +67,14 @@ class TestCaption:
         assert kb.alternatives(result, rows(states)[0]) is None
         assert kb.alternatives(result, None) is None
 
-    def test_fits_a_telegram_caption(self) -> None:
+    def test_the_longest_caption_fits_telegram(self) -> None:
+        """Telegram refuses a photo caption over 1,024 characters, and the bot has no fallback for
+        one: this is the longest caption there can be (the widest amount, four different rates,
+        a saved and stale source), and it has to fit."""
         states = {s: state(s, {"EUR": f"0.0{i + 1}"}) for i, s in enumerate(SourceId)}
-        result = answer("EUR", Decimal("99999999.99"), Period(10, "y"), quote("0.01"), TODAY)
-        assert len(replies.rate_caption(result, rows(states)[0])) <= replies.CAPTION_LIMIT
+        widest = Quote(SourceId.CARDS, Decimal("0.0275"), NOW, True, "upload")
+        result = answer("EUR", Decimal("99999999.99"), Period(10, "y"), widest, TODAY)
+        assert len(replies.rate_caption(result, rows(states)[0])) <= 1024
 
 
 def test_change_alert() -> None:
@@ -100,13 +104,44 @@ def test_the_two_website_pages_are_one_website() -> None:
     assert replies.says([cards]) == "trading212.com/cards says"
 
 
+def test_an_alert_marks_what_is_stale() -> None:
+    change = Change(SourceId.APP_STORE, Region.EU, "EUR", Decimal("0.022"), Decimal("0.025"), LATER)
+    blocked = {"failing_since": LATER, "problem": "HTTP 403, bot check", "via": "upload"}
+    states = {
+        SourceId.SITE: state(SourceId.SITE, SITE_EU, **blocked),  # type: ignore[arg-type]
+        SourceId.CARDS: state(SourceId.CARDS, SITE_EU, **blocked),  # type: ignore[arg-type]
+        SourceId.APP_STORE: state(SourceId.APP_STORE, {"EUR": "0.025"}, at=LATER),
+        SourceId.GOOGLE_PLAY: state(SourceId.GOOGLE_PLAY, STORE_EU, at=LATER),
+    }
+    text = replies.change_alert([change], states)
+    assert "Now: 2.5% on the website (stale) and App Store; 2.2% on Google Play." in text
+
+
+def test_a_warning_starts_with_a_capital() -> None:
+    states = {s: state(s, SITE_EU if s in (SourceId.SITE, SourceId.CARDS) else STORE_EU) for s in SourceId}
+    app = Quote(SourceId.APP_STORE, Decimal("0.022"), NOW, False)
+    row = next(r for r in rows(states) if r.ccy == "EUR")
+    caption = replies.rate_caption(answer("EUR", Decimal(100), Period(1, "y"), app, TODAY), row)
+    assert "⚠️ The website says 2.5%." in caption
+
+
+def test_tax_is_said_per_company() -> None:
+    eu, uk = replies.about(Region.EU, 6), replies.about(Region.UK, 6)
+    assert "17% withholding tax and 2.65% GHS" in eu
+    assert "17%" not in uk
+    assert "ISA" in uk
+    assert replies.TAX_ARTICLE in eu
+    assert replies.TAX_ARTICLE in uk
+
+
 def test_subscribing_with_no_rate_yet() -> None:
     assert replies.subscribed("CHF", True, None).startswith("Subscribed to CHF: I will write")
 
 
 def test_upload_reply_lists_the_changes() -> None:
     change = Change(SourceId.SITE, Region.EU, "EUR", Decimal("0.025"), Decimal("0.0275"), NOW)
-    assert replies.upload_done(SourceId.SITE, 10, [change]).endswith("EUR: 2.5% → 2.75%")
+    text = replies.upload_done(SourceId.SITE, 10, [change])
+    assert "Different from before:\nEUR: 2.5% → 2.75%" in text
 
 
 def test_help_names_the_region() -> None:

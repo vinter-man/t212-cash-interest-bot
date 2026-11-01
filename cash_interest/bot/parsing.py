@@ -33,8 +33,10 @@ _UNITS: dict[str, Unit] = {
 }
 _FILLER = frozenset(("for", "over", "in", "at", "of", "on", "with", "and", "per", "a", "an", "rate"))
 _MULTIPLIERS = {"k": Decimal(1_000), "m": Decimal(1_000_000)}
-# A space (or a no-break one) between digit groups: "20 000" is one number.
-_GROUP_SPACE = re.compile(r"(?<=\d)[   ](?=\d{3}(?!\d))")
+# A number written in groups: a head of one to three digits, then groups of exactly three,
+# split by spaces or no-break ones. "20 000" and "1 000 000" are one number each; "20000 365d"
+# and "500 365d" are an amount and a period.
+_GROUPED = re.compile(r"(?<![\d.,])\d{1,3}(?:[ \N{NO-BREAK SPACE}\N{NARROW NO-BREAK SPACE}]\d{3})+(?!\w)")
 _PERIOD = re.compile(r"^(\d{1,4})(" + "|".join(sorted(_UNITS, key=len, reverse=True)) + r")$")
 _AMOUNT = re.compile(r"^(\d[\d.,]*)(k|m)?$")
 _CODE = re.compile(r"^[a-z]{3}$")
@@ -155,10 +157,9 @@ class _Reader:
 
 
 def parse_query(text: str, known: Collection[str] = ()) -> Query:
-    """The currency, the amount and (optionally) the period, from what the user typed."""
-    words = [w.strip(",;") for w in _GROUP_SPACE.sub("", text).lower().split()]
-    if words and words[0].startswith("/"):
-        words = words[1:]  # the command itself, with or without @botname
+    """The currency, the amount and (optionally) the period: what follows /rate, or a message."""
+    joined = _GROUPED.sub(lambda match: "".join(match.group(0).split()), text)
+    words = [w.strip(",;") for w in joined.lower().split()]
     words = [w for w in words if w and w not in _FILLER]
     if not words:
         raise InputError("Tell me a currency and an amount.")
@@ -181,10 +182,8 @@ def parse_query(text: str, known: Collection[str] = ()) -> Query:
 
 
 def parse_currency(text: str, known: Collection[str] = ()) -> str:
-    """The one currency of `/subscribe EUR`."""
+    """The one currency of `/subscribe EUR`, from what follows the command."""
     words = text.split()
-    if words and words[0].startswith("/"):
-        words = words[1:]
     if len(words) != 1:
         raise InputError("One currency code, please.")
     word = words[0].lower()
