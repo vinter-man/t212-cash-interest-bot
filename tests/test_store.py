@@ -34,6 +34,17 @@ async def test_the_same_value_written_differently_is_not_a_change(store: Store) 
     assert await store.record(APP, Region.EU, rates(APP, {"USD": "0.033"}), at=LATER) == []
 
 
+async def test_a_saved_page_in_between_does_not_repeat_an_alert(store: Store) -> None:
+    """Live 2.2 -> live 2.5 is one alert. An old page saying 2.2 arrives; the owner hears that it
+    differs from what was on show. The next live 2.5 is no news to subscribers."""
+    site = SourceId.SITE
+    await store.record(site, Region.EU, rates(site, {"EUR": "0.022"}), at=NOW)
+    assert len(await store.record(site, Region.EU, rates(site, {"EUR": "0.025"}), at=LATER)) == 1
+    upload = await store.record(site, Region.EU, rates(site, {"EUR": "0.022"}), at=LATER, via="upload")
+    assert [(c.old, c.new) for c in upload] == [(Decimal("0.025"), Decimal("0.022"))]
+    assert await store.record(site, Region.EU, rates(site, {"EUR": "0.025"}), at=LATEST) == []
+
+
 async def test_currencies_that_appear_or_disappear_are_not_changes(store: Store) -> None:
     await store.record(APP, Region.EU, rates(APP, {"EUR": "0.022", "USD": "0.033"}), at=NOW)
     assert await store.record(APP, Region.EU, rates(APP, {"EUR": "0.022", "GBP": "0.038"}), at=LATER) == []

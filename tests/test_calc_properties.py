@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from decimal import Decimal
 
 import pytest
@@ -70,5 +71,6 @@ def test_the_first_payment_day_years_out(balance: str, apy: str, day: int) -> No
     float estimate worked out separately, ceil(0.01 / daily interest), all agree."""
     first = first_payment_day(Decimal(balance), Decimal(apy))
     assert first == day
+    assert math.ceil(0.01 / (float(balance) * ((1 + float(apy)) ** (1 / 365.25) - 1))) == day
     days = simulate(Decimal(balance), Decimal(apy), MAX_DAYS).days
     assert next(d.n for d in days if d.paid) == day

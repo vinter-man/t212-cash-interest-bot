@@ -24,10 +24,10 @@ FORMULA = (
 TAX_ARTICLE = "https://helpcentre.trading212.com/hc/en-us/articles/15472255836957-Do-I-have-to-pay-taxes-on-the-earned-interest-on-cash"
 # What the help centre's tax article says for each company; the bot itself calculates no tax.
 TAX = {
-    Region.EU: "Tax residents of Cyprus pay a 17% withholding tax and 2.65% GHS on the interest; "
-    "everyone else is paid gross, and their own country may tax it.",
-    Region.UK: "No tax on ISA interest; otherwise it depends on where you are tax resident, and "
-    "nothing is calculated here.",
+    Region.EU: "At Trading 212 Markets Ltd, tax residents of Cyprus pay a 17% withholding tax and 2.65% "
+    "GHS on the interest; everyone else is paid gross, and their own country may tax it. (Clients of "
+    "Trading 212 EU GmbH, in Germany, have tax deducted automatically.)",
+    Region.UK: "At Trading 212 UK Ltd, ISA interest is tax-free; otherwise it depends on where you are tax resident.",
 }
 DISCLAIMER = "Unofficial: not affiliated with Trading 212, and not financial advice."
 
@@ -213,7 +213,7 @@ def subscribed(ccy: str, new: bool, quote: Quote | None) -> str:
     if not new:
         return f"You are already subscribed to {ccy}.{current}"
     return (
-        f"Subscribed to {ccy}: I will write when a check finds its rate changed anywhere.{current}\n"
+        f"Subscribed to {ccy}: I will write when a check finds a new {ccy} rate at any source.{current}\n"
         f"<code>/unsubscribe {ccy}</code> to stop."
     )
 
@@ -253,7 +253,7 @@ def help_text(region: Region) -> str:
         "<code>EUR 20000 5y</code>.\n\n"
         "<b>/rates</b> — the table: each currency, each source, with disagreements marked\n"
         "<b>/diff</b> — the disagreements only, with when each source was last checked\n"
-        "<b>/subscribe EUR</b>, <b>/unsubscribe EUR</b> — a message when a check finds a rate changed; "
+        "<b>/subscribe EUR</b>, <b>/unsubscribe EUR</b> — a message when a check finds a new rate; "
         "<b>/subscribe</b> alone lists yours\n"
         "<b>/about</b> — the formula, the sources, tax and the fine print\n\n"
         f"{region} view. <i>{DISCLAIMER}</i>"

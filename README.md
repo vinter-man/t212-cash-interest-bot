@@ -167,7 +167,7 @@ amounts, two currencies or two periods are an error rather than a guess.
 | `/rate <CCY> <amount> [<period>]` | interest day by day, as a chart: `/rate EUR 20000 5y` |
 | `/rates` | every rate from every source, disagreements marked |
 | `/diff` | only the currencies the sources disagree on, with each source's last check |
-| `/subscribe <CCY>` | a message when a check finds that currency's rate changed somewhere |
+| `/subscribe <CCY>` | a message when a check finds a new rate for that currency at any source |
 | `/unsubscribe <CCY>` | stop those messages |
 | `/help`, `/about` | how to ask; the formula, the sources, tax and the fine print |
 
@@ -208,12 +208,14 @@ an answer, so that source is left alone until the next cycle.
 
 ## <a name="tax"></a> Tax
 
-The bot shows interest before tax. For the EU company, Trading 212's
+The bot shows interest before tax. Trading 212's
 [tax article](https://helpcentre.trading212.com/hc/en-us/articles/15472255836957-Do-I-have-to-pay-taxes-on-the-earned-interest-on-cash)
-says tax residents of Cyprus pay a 17% withholding tax and 2.65% GHS on the interest, and
-everyone else is paid gross (their own country may still tax it). For the UK company, ISA
-interest is tax-free and the rest depends on where you are tax resident. `/about` says the same,
-for the region the bot follows.
+says, for Trading 212 Markets Ltd (the EU view), that tax residents of Cyprus pay a 17%
+withholding tax and 2.65% GHS on the interest and everyone else is paid gross, though their own
+country may tax it. At Trading 212 UK Ltd, ISA interest is tax-free and the rest depends on
+where you are tax resident. Clients of Trading 212 EU GmbH, the German company, have the tax
+deducted automatically; the bot doesn't follow that company's rates. `/about` says the same, for
+the region the bot follows.
 
 ---
 ---
