@@ -6,7 +6,8 @@ A trading212.com page keeps its `__NEXT_DATA__` JSON, minus the translations, re
 tables that make up most of it; the rates object inside keeps every value. Any other page loses
 its inline styles, fonts, images, SVG (logos included) and every script but the ones a parser or
 the bot-check detection looks at. What is left is small enough to review, and the IP address a
-block page echoes back becomes a documentation address (RFC 5737).
+block page echoes back becomes a documentation address (RFC 5737), and a person's email address
+becomes someone@example.com.
 """
 
 from __future__ import annotations
@@ -16,14 +17,18 @@ import json
 import re
 from pathlib import Path
 
-# pageProps a parser or a person reading the fixture might want; the rest is copy and reviews.
-KEEP = ("interestOnCashRates", "geolocationCookie", "currenciesWithChangingRates", "warningType")
+# pageProps a parser or a person reading the fixture might want; the rest is copy, reviews, and
+# where the page was saved from (geolocationCookie).
+KEEP = ("interestOnCashRates", "currenciesWithChangingRates", "warningType")
 NEXT_DATA = re.compile(r'(<script[^>]*\bid="__NEXT_DATA__"[^>]*>)(.*?)(</script>)', re.S)
 TITLE = re.compile(r"<title[^>]*>.*?</title>", re.S)
 NOISE = re.compile(r"<style[^>]*>.*?</style>|<svg.*?</svg>|<noscript>.*?</noscript>", re.S)
 SCRIPT = re.compile(r"<script[^>]*>.*?</script>", re.S)
 INLINE_DATA = re.compile(r"data:[a-z]+/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+")
 YOUR_IP = re.compile(r"(Your IP:\s*)[0-9a-fA-F:.]+")
+EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+# Addresses a company publishes for everyone stay; a person's address does not.
+ROLES = ("info", "support", "help", "privacy", "contact")
 # Scripts worth keeping: the Play listing's description data, Cloudflare's challenge loader.
 WANTED = ("uninvested cash", "challenge-platform")
 
@@ -49,6 +54,7 @@ def trim_other(page: str) -> str:
     page = NOISE.sub("", page)
     page = SCRIPT.sub(lambda m: m.group(0) if any(w in m.group(0) for w in WANTED) else "", page)
     page = YOUR_IP.sub(r"\g<1>203.0.113.7", page)
+    page = EMAIL.sub(lambda m: m.group(0) if m.group(0).split("@")[0] in ROLES else "someone@example.com", page)
     return INLINE_DATA.sub("data:,", page)
 
 

@@ -75,7 +75,8 @@ jobs:
       - name: Deploy over SSH
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
-          USER: ${{ secrets.DEPLOY_USER }}
+          # A variable, not a secret: GitHub masks a secret's value in every log line, even "deployed".
+          USER: ${{ vars.DEPLOY_USER }}
           KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
         run: |

@@ -1,7 +1,8 @@
 name: Nightly live check
 
-# Once a day the parsers meet the real pages. A failure means a page changed under its parser
-# (or a rate left 0–15%), and an issue says so, with what every source says at that moment.
+# Once a day the parsers meet the real pages. A failure means a page changed under its parser,
+# a rate left 0–15%, or a source could not be reached from here; the issue has what every source
+# says at that moment, so it is clear which.
 on:
   schedule:
     - cron: '17 5 * * *'
@@ -38,5 +39,5 @@ jobs:
           if [ -n "$open" ]; then
             gh issue comment "$open" --body "$body"
           else
-            gh issue create --title "Live check failed: a source changed under its parser" --label live-check --body "$body"
+            gh issue create --title "Nightly live check failed" --label live-check --body "$body"
           fi

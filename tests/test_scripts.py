@@ -11,7 +11,7 @@ import pytest
 from cash_interest.sources import Region, SourceId
 from cash_interest.sources.website import page_rates
 from scripts import export_shots, trim_page
-from tests.conftest import NOW, fixture
+from tests.conftest import FIXTURES, NOW, fixture
 
 PNG = b"\x89PNG\r\n\x1a\n"
 SHOTS = {"rate", "rate_app", "small", "diff", "errors", "rates", "subscribe"}
@@ -97,6 +97,27 @@ class TestTrimPage:
         assert 'src="data:,"' in trimmed
         assert "Your IP: 203.0.113.7" in trimmed
         assert "1.2.3.4" not in trimmed
+
+    def test_a_persons_address_goes_and_a_companys_stays(self) -> None:
+        trimmed = trim_page.trim_other("<div> jane.doe@example.org </div><p>Reach us at info@example.org</p>")
+        assert "jane.doe" not in trimmed
+        assert "someone@example.com" in trimmed
+        assert "info@example.org" in trimmed
+
+    def test_where_the_page_was_saved_from_goes(self) -> None:
+        page = (
+            '<script id="__NEXT_DATA__" type="application/json">'
+            '{"props":{"pageProps":{"geolocationCookie":"bg","interestOnCashRates":{}}}}</script>'
+        )
+        assert "geolocationCookie" not in trim_page.trim_next(page)
+
+    def test_the_saved_fixtures_carry_no_personal_data(self) -> None:
+        for path in sorted(FIXTURES.rglob("*.*")):
+            text = path.read_text(encoding="utf-8")
+            assert "geolocationCookie" not in text, path
+            assert not [
+                m for m in trim_page.EMAIL.findall(text) if m.split("@")[0] not in (*trim_page.ROLES, "someone")
+            ]
 
     def test_main(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
         source, target = tmp_path / "saved.html", tmp_path / "out" / "page.html"
