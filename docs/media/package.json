@@ -1,0 +1,21 @@
+{
+  "name": "cash-interest-media",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Renders the README's banner, screenshots and demo GIF from the bot's real replies.",
+  "scripts": {
+    "studio": "remotion studio",
+    "build": "node render.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.536",
+    "@remotion/google-fonts": "4.0.536",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.536"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "typescript": "5.9.3"
+  }
+}
