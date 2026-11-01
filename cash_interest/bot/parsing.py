@@ -34,9 +34,14 @@ _UNITS: dict[str, Unit] = {
 _FILLER = frozenset(("for", "over", "in", "at", "of", "on", "with", "and", "per", "a", "an", "rate"))
 _MULTIPLIERS = {"k": Decimal(1_000), "m": Decimal(1_000_000)}
 # A number written in groups: a head of one to three digits, then groups of exactly three,
-# split by spaces or no-break ones. "20 000" and "1 000 000" are one number each; "20000 365d"
-# and "500 365d" are an amount and a period.
-_GROUPED = re.compile(r"(?<![\d.,])\d{1,3}(?:[ \N{NO-BREAK SPACE}\N{NARROW NO-BREAK SPACE}]\d{3})+(?!\w)")
+# split by spaces or no-break ones. "20 000" and "1 000 000" are one number each; "20000 365d",
+# "500 365d" and "100 365 days" are an amount and a period.
+_GROUPED = re.compile(
+    r"(?<![\d.,])\d{1,3}(?:[ \N{NO-BREAK SPACE}\N{NARROW NO-BREAK SPACE}]\d{3})+(?!\w)"
+    + r"(?!\s+(?:"
+    + "|".join(sorted(_UNITS, key=len, reverse=True))
+    + r")\b)"
+)
 _PERIOD = re.compile(r"^(\d{1,4})(" + "|".join(sorted(_UNITS, key=len, reverse=True)) + r")$")
 _AMOUNT = re.compile(r"^(\d[\d.,]*)(k|m)?$")
 _CODE = re.compile(r"^[a-z]{3}$")

@@ -47,6 +47,9 @@ KNOWN = {"EUR", "GBP", "USD", "PLN", "CZK", "HUF", "RON", "SEK", "DKK", "NOK"}
         ("EUR 20000 120m", "EUR", "20000", "120m"),
         ("EUR 20000.00 365d", "EUR", "20000", "365d"),  # what a button sends back
         ("EUR 20 000 365d", "EUR", "20000", "365d"),
+        ("usd 100 365 days", "USD", "100", "365d"),
+        ("eur 999 100 weeks", "EUR", "999", "100w"),
+        ("eur 20 000 18 months", "EUR", "20000", "18m"),
     ],
 )
 def test_understood(text: str, ccy: str, amount: str, period: str) -> None:

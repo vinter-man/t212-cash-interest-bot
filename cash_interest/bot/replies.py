@@ -74,9 +74,9 @@ def names(sources: Sequence[SourceId], stale: Collection[SourceId] = ()) -> str:
     website = [s for s in sources if s in (SourceId.SITE, SourceId.CARDS)]
     parts = [label(s.label, s) for s in sources if s not in website]
     if len(website) == 2:
-        parts.insert(0, label("the website", *website))
+        parts.insert(0, "the website (stale)" if any(s in stale for s in website) else "the website")
     elif website:
-        parts.insert(0, label(website[0].label, website[0]))
+        parts.insert(0, label(f"the {website[0].label} page", website[0]))
     return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
@@ -213,7 +213,7 @@ def subscribed(ccy: str, new: bool, quote: Quote | None) -> str:
     if not new:
         return f"You are already subscribed to {ccy}.{current}"
     return (
-        f"Subscribed to {ccy}: I will write when any source changes its {ccy} rate.{current}\n"
+        f"Subscribed to {ccy}: I will write when a check finds its rate changed anywhere.{current}\n"
         f"<code>/unsubscribe {ccy}</code> to stop."
     )
 
@@ -253,7 +253,7 @@ def help_text(region: Region) -> str:
         "<code>EUR 20000 5y</code>.\n\n"
         "<b>/rates</b> — the table: each currency, each source, with disagreements marked\n"
         "<b>/diff</b> — the disagreements only, with when each source was last checked\n"
-        "<b>/subscribe EUR</b>, <b>/unsubscribe EUR</b> — a message when any source changes a rate; "
+        "<b>/subscribe EUR</b>, <b>/unsubscribe EUR</b> — a message when a check finds a rate changed; "
         "<b>/subscribe</b> alone lists yours\n"
         "<b>/about</b> — the formula, the sources, tax and the fine print\n\n"
         f"{region} view. <i>{DISCLAIMER}</i>"

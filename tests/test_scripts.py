@@ -104,6 +104,10 @@ class TestTrimPage:
         assert "someone@example.com" in trimmed
         assert "info@example.org" in trimmed
 
+    def test_a_phone_number_rings_nobody(self) -> None:
+        trimmed = trim_page.trim_other("<div>+44 7700 900123</div><div>+1 202 555 0147</div>")
+        assert trimmed == f"<div>{trim_page.NOBODY}</div><div>{trim_page.NOBODY}</div>"
+
     def test_where_the_page_was_saved_from_goes(self) -> None:
         page = (
             '<script id="__NEXT_DATA__" type="application/json">'
@@ -118,6 +122,7 @@ class TestTrimPage:
             assert not [
                 m for m in trim_page.EMAIL.findall(text) if m.split("@")[0] not in (*trim_page.ROLES, "someone")
             ]
+            assert set(trim_page.PHONE.findall(text)) <= {trim_page.NOBODY}, path
 
     def test_main(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
         source, target = tmp_path / "saved.html", tmp_path / "out" / "page.html"

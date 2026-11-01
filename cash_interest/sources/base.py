@@ -12,7 +12,9 @@ from enum import StrEnum
 from typing import Annotated, ClassVar, Final
 
 import httpx
-from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, StringConstraints
+from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, StringConstraints, ValidationError
+
+from cash_interest.money import pct
 
 log = logging.getLogger(__name__)
 
@@ -117,14 +119,13 @@ def to_rates(found: dict[str, Decimal], source: SourceId, region: Region, fetche
     """`found` as Rates; an implausible number fails the whole page, never just its row."""
     if not found:
         raise ParseError("no rates on the page")
-    low, high = PLAUSIBLE
+    rates = []
     for ccy, apy in sorted(found.items()):
-        if not low <= apy <= high:
-            raise ParseError(f"implausible rate for {ccy}: {(apy * 100).normalize():f}%")
-    return [
-        Rate(ccy=ccy, apy=apy, source=source, region=region, fetched_at=fetched_at)
-        for ccy, apy in sorted(found.items())
-    ]
+        try:
+            rates.append(Rate(ccy=ccy, apy=apy, source=source, region=region, fetched_at=fetched_at))
+        except ValidationError:  # the parsers pass only three-letter codes: it is the number
+            raise ParseError(f"implausible rate for {ccy}: {pct(apy)}") from None
+    return rates
 
 
 def utcnow() -> datetime:

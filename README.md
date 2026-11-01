@@ -23,8 +23,8 @@ arrives.
 And it checks the rate itself. On 1 November 2026 the website quoted **2.5%** on euros for EU
 clients, while the App Store and Google Play listings said **2.2%** (pounds 3.55% against 3.8%,
 dollars 3.4% against 3.3%). On €20,000 over five years that gap is €329.16. The bot reads all
-four places every six hours, marks where they disagree, and messages you when any of them
-changes.
+four places every six hours, marks where they disagree, and messages you when a check finds a
+rate changed.
 
 Try it: [@t212_cash_interest_bot](https://t.me/t212_cash_interest_bot)
 
@@ -94,7 +94,7 @@ is lost for good, and it is tiny: €0.00066 over five years on €20,000.
 
 ### <a name="small"></a> A balance that earns less than a cent a day
 
-$10 at 3.4% earns $0.00092 a day. Nothing is paid until the carried fractions add up to a cent,
+$10 at 3.4% earns $0.00091 a day. Nothing is paid until the carried fractions add up to a cent,
 on day 11; the cups show them filling up.
 
 ![small balance](docs/assets/small.png)
@@ -121,8 +121,11 @@ source, with the time of its last check.
 
 ### <a name="subscribe"></a> When a rate changes
 
-`/subscribe EUR` and the bot writes when any source changes its euro rate, with what all four
-say at that moment. `/subscribe` on its own lists your subscriptions; `/unsubscribe EUR` stops one.
+`/subscribe EUR` and the bot writes when a check finds a source's euro rate changed, with what
+every source says at that moment. Alerts come only from the bot's own checks: the stores every
+six hours, and the website whenever it lets the bot read it (a page the owner sends is not a
+check, see [The sources](#sources)). `/subscribe` on its own lists your subscriptions;
+`/unsubscribe EUR` stops one.
 
 ![subscribe](docs/assets/subscribe.png)
 
@@ -164,7 +167,7 @@ amounts, two currencies or two periods are an error rather than a guess.
 | `/rate <CCY> <amount> [<period>]` | interest day by day, as a chart: `/rate EUR 20000 5y` |
 | `/rates` | every rate from every source, disagreements marked |
 | `/diff` | only the currencies the sources disagree on, with each source's last check |
-| `/subscribe <CCY>` | a message when any source changes that currency's rate |
+| `/subscribe <CCY>` | a message when a check finds that currency's rate changed somewhere |
 | `/unsubscribe <CCY>` | stop those messages |
 | `/help`, `/about` | how to ask; the formula, the sources, tax and the fine print |
 

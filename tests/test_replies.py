@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import timedelta
 from decimal import Decimal
 
+import pytest
+
 from cash_interest.answer import answer
 from cash_interest.board import Quote, SourceState, rows
 from cash_interest.bot import keyboards as kb
@@ -85,13 +87,14 @@ class TestCaption:
         assert kb.alternatives(result, rows(states)[0]) is None
         assert kb.alternatives(result, None) is None
 
-    def test_the_longest_caption_fits_telegram(self) -> None:
+    @pytest.mark.parametrize("ccy", ["EUR", "HUF"])
+    def test_the_longest_caption_fits_telegram(self, ccy: str) -> None:
         """Telegram refuses a photo caption over 1,024 characters, and the bot has no fallback for
-        one: this is the longest caption there can be (the widest amount, four different rates,
-        a saved and stale source), and it has to fit."""
-        states = {s: state(s, {"EUR": f"0.0{i + 1}"}) for i, s in enumerate(SourceId)}
+        one, so the widest it can get has to fit: the largest amount, in a currency written as a
+        code rather than a symbol, four different rates, a saved and stale source."""
+        states = {s: state(s, {ccy: f"0.0{i + 1}"}) for i, s in enumerate(SourceId)}
         widest = Quote(SourceId.CARDS, Decimal("0.0275"), NOW, True, "upload")
-        result = answer("EUR", Decimal("99999999.99"), Period(10, "y"), widest, TODAY)
+        result = answer(ccy, Decimal("99999999.99"), Period(10, "y"), widest, TODAY)
         assert len(replies.rate_caption(result, rows(states)[0])) <= 1024
 
 
@@ -110,7 +113,7 @@ def test_change_alert() -> None:
     assert text.startswith("<b>EUR rate changed</b> (EU view)")
     assert "▲ App Store: 2.2% → <b>2.5%</b>" in text
     assert "▼ Google Play: 2.2% → <b>2%</b>" in text
-    assert "Now: 2.5% on trading212.com/interest-on-cash and App Store; 2% on Google Play." in text
+    assert "Now: 2.5% on the trading212.com/interest-on-cash page and App Store; 2% on Google Play." in text
     assert "<code>/rate EUR 10000</code> · <code>/unsubscribe EUR</code>" in text
 
 
@@ -119,7 +122,8 @@ def test_the_two_website_pages_are_one_website() -> None:
     assert replies.says([site, cards]) == "the website says"
     assert replies.says([app_store, SourceId.GOOGLE_PLAY]) == "App Store and Google Play say"
     assert replies.says([site, cards, app_store]) == "the website and App Store say"
-    assert replies.says([cards]) == "trading212.com/cards says"
+    assert replies.says([cards]) == "the trading212.com/cards page says"
+    assert replies.names([site, cards], stale={cards}) == "the website (stale)"
 
 
 def test_an_alert_marks_what_is_stale() -> None:

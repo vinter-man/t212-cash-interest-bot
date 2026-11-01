@@ -104,7 +104,7 @@
     },
     {
       "in": {
-        "html": "Subscribed to EUR: I will write when any source changes its EUR rate. Now: 2.5% (trading212.com/interest-on-cash, a saved page sent 01 Nov 2026).\n<code>/unsubscribe EUR</code> to stop.",
+        "html": "Subscribed to EUR: I will write when a check finds its rate changed anywhere. Now: 2.5% (trading212.com/interest-on-cash, a saved page sent 01 Nov 2026).\n<code>/unsubscribe EUR</code> to stop.",
         "keyboard": []
       }
     },

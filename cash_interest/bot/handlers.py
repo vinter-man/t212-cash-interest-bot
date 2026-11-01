@@ -222,9 +222,9 @@ def create_router() -> Router:
     router.message.register(on_diff, Command("diff"))
     router.message.register(on_subscribe, Command("subscribe"))
     router.message.register(on_unsubscribe, Command("unsubscribe"))
-    router.message.register(on_document, F.document)
-    # Plain text is a question only in a private chat; in a group, replies to the bot are just talk.
+    # Plain text and files are for the bot only in a private chat; in a group they are just talk.
     private = F.chat.type == "private"
+    router.message.register(on_document, private, F.document)
     router.message.register(on_text, private, F.text & ~F.text.startswith("/"))
     router.message.register(on_anything_else, private)
     router.callback_query.register(on_rate_button, kb.RateCb.filter())

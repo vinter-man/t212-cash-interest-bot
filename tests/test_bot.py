@@ -440,6 +440,14 @@ async def test_plain_text_in_a_group_is_not_a_question(seeded: Env) -> None:
     assert not seeded.session.sent()
 
 
+async def test_a_file_in_a_group_is_not_for_the_bot(env: Env) -> None:
+    document = Document(file_id="f", file_unique_id="f", file_name="cards.html", file_size=2_000)
+    group = Update(update_id=next(_ids), message=Message(message_id=next(_ids), date=datetime.now(UTC),
+                   chat=Chat(id=-100, type="supergroup"), from_user=OWNER, document=document))  # fmt: skip
+    await env.send(group)
+    assert not env.session.calls
+
+
 async def test_a_sticker_gets_a_hint(env: Env) -> None:
     sticker = Sticker(file_id="s", file_unique_id="s", type="regular", width=1, height=1, is_animated=False,
                       is_video=False)  # fmt: skip
