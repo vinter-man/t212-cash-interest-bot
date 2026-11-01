@@ -124,7 +124,7 @@ def to_rates(found: dict[str, Decimal], source: SourceId, region: Region, fetche
         try:
             rates.append(Rate(ccy=ccy, apy=apy, source=source, region=region, fetched_at=fetched_at))
         except ValidationError as error:
-            if {problem["loc"][0] for problem in error.errors()} != {"apy"}:
+            if {problem["loc"][:1] for problem in error.errors()} != {("apy",)}:
                 raise  # anything but the number is a bug here, not something the page said
             raise ParseError(f"implausible rate for {ccy}: {pct(apy)}") from None
     return rates

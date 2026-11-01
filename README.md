@@ -134,12 +134,11 @@ check, see [The sources](#sources)). `/subscribe` on its own lists your subscrip
 > last good value stays on show, marked "stale since", and nobody is notified. A change is only
 > a successful live check that disagrees with the previous *successful live* check of the same
 > source, so a failure in between can neither hide a change nor invent one, and nor can a saved
-> page the owner sends. A currency appearing in a
-> listing or dropping out of it isn't a change either, and a parser that reads 25% somewhere
-> fails the whole page instead of reporting one bad row. A test plays exactly that sequence
-> (value, outage, same value, unreadable page, new value) and expects one alert. What this can't
-> catch is a parser reading a plausible wrong number, which is what the saved-page tests and the
-> nightly live check are for.
+> page the owner sends. A currency appearing in a listing or dropping out of it isn't a change
+> either, and a parser that reads 25% somewhere fails the whole page instead of reporting one bad
+> row. A test plays exactly that sequence (value, outage, same value, unreadable page, new value)
+> and expects one alert. What this can't catch is a parser reading a plausible wrong number,
+> which is what the saved-page tests and the nightly live check are for.
 
 ### <a name="errors"></a> When you type something odd
 
@@ -214,9 +213,9 @@ The bot shows interest before tax. Trading 212's
 says, for Trading 212 Markets Ltd (the EU view), that tax residents of Cyprus pay a 17%
 withholding tax and 2.65% GHS on the interest and everyone else is paid gross, though their own
 country may tax it. At Trading 212 UK Ltd, ISA interest is tax-free and the rest depends on
-where you are tax resident. At Trading 212 EU, the German company, the article says the tax is
-deducted automatically; the bot doesn't follow that company's rates. `/about` says the same, for
-the region the bot follows.
+where you are tax resident. At Trading 212 EU, the German company, the article says interest tax
+is deducted automatically, though taxation may vary with account type and trading activity; the
+bot doesn't follow that company's rates. `/about` says the same, for the region the bot follows.
 
 ---
 ---
