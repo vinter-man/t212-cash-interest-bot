@@ -1,0 +1,115 @@
+"""Reply texts that the dispatcher tests do not reach: edge cases of the caption and the status lines."""
+
+from __future__ import annotations
+
+from datetime import timedelta
+from decimal import Decimal
+
+from cash_interest.answer import answer
+from cash_interest.board import Quote, SourceState, rows
+from cash_interest.bot import keyboards as kb
+from cash_interest.bot import replies
+from cash_interest.calc import Period
+from cash_interest.sources import Region, SourceId
+from cash_interest.store import Change
+from tests.conftest import NOW, SITE_EU, STORE_EU, TODAY, state
+
+LATER = NOW + timedelta(hours=6)
+
+
+def quote(apy: str, source: SourceId = SourceId.SITE, *, stale: bool = False) -> Quote:
+    return Quote(source, Decimal(apy), NOW, stale)
+
+
+class TestSourceLine:
+    def test_never_checked(self) -> None:
+        assert replies.source_line(SourceState(SourceId.SITE)) == "site: not checked yet"
+
+    def test_never_succeeded(self) -> None:
+        line = replies.source_line(state(SourceId.CARDS, {}, failing_since=NOW, problem="HTTP 403, bot check"))
+        assert line == "cards: no value since 01 Nov 20:30 (HTTP 403, bot check)"
+
+    def test_stale_after_a_live_read(self) -> None:
+        line = replies.source_line(state(SourceId.APP_STORE, STORE_EU, failing_since=LATER, problem="HTTP 502"))
+        assert line == "iOS: stale since 02 Nov 02:30 (HTTP 502); value from the last good check, 01 Nov 20:30"
+
+    def test_problems_are_escaped(self) -> None:
+        line = replies.source_line(state(SourceId.SITE, {}, failing_since=NOW, problem="<script>"))
+        assert "&lt;script&gt;" in line
+
+
+class TestCaption:
+    def test_zero_rate(self) -> None:
+        result = answer("DKK", Decimal(1000), Period(1, "y"), quote("0"), TODAY)
+        caption = replies.rate_caption(result, None)
+        assert "At 0% nothing is ever paid." in caption
+        assert "Balance after 1 year: <b>DKK 1,000.00</b>" in caption
+
+    def test_saved_page_and_stale_are_both_said(self) -> None:
+        stale = Quote(SourceId.SITE, Decimal("0.025"), NOW, True, "upload")
+        caption = replies.rate_caption(answer("EUR", Decimal(100), Period(1, "y"), stale, TODAY), None)
+        assert "Rate: trading212.com/interest-on-cash, a page saved in a browser, 01 Nov 2026 <i>(stale)</i>" in caption
+
+    def test_several_other_values(self) -> None:
+        states = {
+            SourceId.SITE: state(SourceId.SITE, {"EUR": "0.025"}),
+            SourceId.APP_STORE: state(SourceId.APP_STORE, {"EUR": "0.022"}),
+            SourceId.GOOGLE_PLAY: state(SourceId.GOOGLE_PLAY, {"EUR": "0.021"}),
+        }
+        row = rows(states)[0]
+        result = answer("EUR", Decimal(100), Period(1, "y"), quote("0.025"), TODAY)
+        assert "App Store says 2.2%; Google Play says 2.1%" in replies.rate_caption(result, row)
+        assert [b.text for b in kb.alternatives(result, row).inline_keyboard[0]] == ["2.2% · iOS", "2.1% · Play"]  # type: ignore[union-attr]
+
+    def test_no_buttons_when_everyone_agrees(self) -> None:
+        states = {SourceId.SITE: state(SourceId.SITE, SITE_EU), SourceId.CARDS: state(SourceId.CARDS, SITE_EU)}
+        result = answer("EUR", Decimal(100), Period(1, "y"), quote("0.025"), TODAY)
+        assert kb.alternatives(result, rows(states)[0]) is None
+        assert kb.alternatives(result, None) is None
+
+    def test_fits_a_telegram_caption(self) -> None:
+        states = {s: state(s, {"EUR": f"0.0{i + 1}"}) for i, s in enumerate(SourceId)}
+        result = answer("EUR", Decimal("99999999.99"), Period(10, "y"), quote("0.01"), TODAY)
+        assert len(replies.rate_caption(result, rows(states)[0])) <= replies.CAPTION_LIMIT
+
+
+def test_change_alert() -> None:
+    changes = [
+        Change(SourceId.APP_STORE, Region.EU, "EUR", Decimal("0.022"), Decimal("0.025"), NOW),
+        Change(SourceId.GOOGLE_PLAY, Region.EU, "EUR", Decimal("0.022"), Decimal("0.02"), NOW),
+    ]
+    states = {
+        SourceId.SITE: state(SourceId.SITE, SITE_EU),
+        SourceId.CARDS: SourceState(SourceId.CARDS),
+        SourceId.APP_STORE: state(SourceId.APP_STORE, {"EUR": "0.025"}),
+        SourceId.GOOGLE_PLAY: state(SourceId.GOOGLE_PLAY, {"EUR": "0.02"}),
+    }
+    text = replies.change_alert(changes, states)
+    assert text.startswith("<b>EUR rate changed</b> (EU view)")
+    assert "▲ App Store: 2.2% → <b>2.5%</b>" in text
+    assert "▼ Google Play: 2.2% → <b>2%</b>" in text
+    assert "Now: 2.5% on trading212.com/interest-on-cash and App Store; 2% on Google Play." in text
+    assert "<code>/rate EUR 10000</code> · <code>/unsubscribe EUR</code>" in text
+
+
+def test_the_two_website_pages_are_one_website() -> None:
+    site, cards, app_store = SourceId.SITE, SourceId.CARDS, SourceId.APP_STORE
+    assert replies.says([site, cards]) == "the website says"
+    assert replies.says([app_store, SourceId.GOOGLE_PLAY]) == "App Store and Google Play say"
+    assert replies.says([site, cards, app_store]) == "the website and App Store say"
+    assert replies.says([cards]) == "trading212.com/cards says"
+
+
+def test_subscribing_with_no_rate_yet() -> None:
+    assert replies.subscribed("CHF", True, None).startswith("Subscribed to CHF: I will write")
+
+
+def test_upload_reply_lists_the_changes() -> None:
+    change = Change(SourceId.SITE, Region.EU, "EUR", Decimal("0.025"), Decimal("0.0275"), NOW)
+    assert replies.upload_done(SourceId.SITE, 10, [change]).endswith("EUR: 2.5% → 2.75%")
+
+
+def test_help_names_the_region() -> None:
+    assert "UK view" in replies.help_text(Region.UK)
+    assert "Trading 212 UK Ltd, FCA" in replies.start(Region.UK)
+    assert "every 6 hours" in replies.about(Region.EU, 6)
