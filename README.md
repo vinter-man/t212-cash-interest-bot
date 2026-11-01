@@ -132,8 +132,9 @@ check, see [The sources](#sources)). `/subscribe` on its own lists your subscrip
 > :shipit: A failure never sends an alert (`poller.py`, `Store.record`). A check that fails —
 > blocked, timed out, a parser that finds nothing — is recorded and nothing else happens: the
 > last good value stays on show, marked "stale since", and nobody is notified. A change is only
-> a successful check that disagrees with the previous *successful* check of the same source, so
-> a failure in between can neither hide a change nor invent one. A currency appearing in a
+> a successful live check that disagrees with the previous *successful live* check of the same
+> source, so a failure in between can neither hide a change nor invent one, and nor can a saved
+> page the owner sends. A currency appearing in a
 > listing or dropping out of it isn't a change either, and a parser that reads 25% somewhere
 > fails the whole page instead of reporting one bad row. A test plays exactly that sequence
 > (value, outage, same value, unreadable page, new value) and expects one alert. What this can't
@@ -213,7 +214,7 @@ The bot shows interest before tax. Trading 212's
 says, for Trading 212 Markets Ltd (the EU view), that tax residents of Cyprus pay a 17%
 withholding tax and 2.65% GHS on the interest and everyone else is paid gross, though their own
 country may tax it. At Trading 212 UK Ltd, ISA interest is tax-free and the rest depends on
-where you are tax resident. Clients of Trading 212 EU GmbH, the German company, have the tax
+where you are tax resident. At Trading 212 EU, the German company, the article says the tax is
 deducted automatically; the bot doesn't follow that company's rates. `/about` says the same, for
 the region the bot follows.
 

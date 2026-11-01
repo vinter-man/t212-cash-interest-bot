@@ -58,7 +58,8 @@ class Status(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Change:
-    """A source now publishes a different rate than at its previous successful check."""
+    """A source now publishes a different rate than at its previous successful live check (or,
+    for a saved page, than what was on show)."""
 
     source: SourceId
     region: Region

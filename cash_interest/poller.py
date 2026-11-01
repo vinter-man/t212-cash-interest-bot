@@ -2,8 +2,8 @@
 
 A failed check is recorded and nothing else happens: the last good rates stay on show, marked
 stale, and nobody is notified. Only a successful check that disagrees with the previous
-successful check of the same source is a change, so a parser that breaks, a page that is
-blocked, or a currency that drops out of a listing never sends an alert.
+successful live check of the same source is a change, so a parser that breaks, a page that is
+blocked, a page the owner sends, or a currency that drops out of a listing never sends an alert.
 """
 
 from __future__ import annotations

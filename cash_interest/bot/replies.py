@@ -25,8 +25,8 @@ TAX_ARTICLE = "https://helpcentre.trading212.com/hc/en-us/articles/1547225583695
 # What the help centre's tax article says for each company; the bot itself calculates no tax.
 TAX = {
     Region.EU: "At Trading 212 Markets Ltd, tax residents of Cyprus pay a 17% withholding tax and 2.65% "
-    "GHS on the interest; everyone else is paid gross, and their own country may tax it. (Clients of "
-    "Trading 212 EU GmbH, in Germany, have tax deducted automatically.)",
+    "GHS on the interest; everyone else is paid gross, and their own country may tax it. (At Trading "
+    "212 EU, the German company, tax is deducted automatically.)",
     Region.UK: "At Trading 212 UK Ltd, ISA interest is tax-free; otherwise it depends on where you are tax resident.",
 }
 DISCLAIMER = "Unofficial: not affiliated with Trading 212, and not financial advice."
