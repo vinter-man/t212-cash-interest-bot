@@ -1,15 +1,14 @@
-"""One polling cycle: ask every source once, remember the answers, report what changed.
+"""One polling cycle: ask every source once, remember the answers, log what changed.
 
 A failed check is recorded and nothing else happens: the last good rates stay on show, marked
-stale, and nobody is notified. Only a successful check that disagrees with the previous
-successful live check of the same source is a change, so a parser that breaks, a page that is
-blocked, a page the owner sends, or a currency that drops out of a listing never sends an alert.
+stale. One source failing, or one database write failing, costs that source this cycle and
+nothing more.
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -17,8 +16,6 @@ from cash_interest.sources import Blocked, FetchError, ParseError, Source, Sourc
 from cash_interest.store import Change, Status, Store
 
 log = logging.getLogger(__name__)
-
-Notify = Callable[[Sequence[Change]], Awaitable[None]]
 
 
 @dataclass(slots=True)
@@ -47,7 +44,6 @@ async def poll(
     store: Store,
     sources: Iterable[Source],
     clock: Callable[[], datetime],
-    notify: Notify | None = None,
 ) -> Report:
     """Every source once, one after another: one request each, never two at once to one host."""
     report = Report()
@@ -75,6 +71,4 @@ async def poll(
         for change in changes:
             log.info("%s %s: %s -> %s", source.id, change.ccy, change.old, change.new)
     log.info("poll: %s", report.summary())
-    if report.changes and notify is not None:
-        await notify(report.changes)
     return report

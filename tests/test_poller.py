@@ -1,9 +1,8 @@
-"""A polling cycle: every outcome is recorded, and only a real change reaches subscribers."""
+"""A polling cycle: every outcome is recorded, and only a real change counts as one."""
 
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Sequence
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -36,14 +35,6 @@ class Fake(Source):
         if isinstance(answer, Exception):
             raise answer
         return rates(self.id, answer, at=self.clock())
-
-
-class Recorder:
-    def __init__(self) -> None:
-        self.calls: list[list[Change]] = []
-
-    async def __call__(self, changes: Sequence[Change]) -> None:
-        self.calls.append(list(changes))
 
 
 @pytest.mark.parametrize(
@@ -80,17 +71,17 @@ async def test_every_outcome_is_recorded(store: Store) -> None:
     assert "app_store: 1 rates" in report.summary()
 
 
-async def test_no_false_alerts(store: Store) -> None:
-    """A value, a failure, the same value, a parse error, then a real change: one alert."""
+async def test_a_failure_in_between_is_not_a_change(store: Store) -> None:
+    """A value, a failure, the same value, a parse error, then a real change: one change."""
     source = Fake(
         SourceId.APP_STORE,
         [{"EUR": "0.022"}, Unavailable("HTTP 502"), {"EUR": "0.022"}, ParseError("reworded"), {"EUR": "0.023"}],
     )
-    notify = Recorder()
+    changes = []
     for hours in range(5):
-        await poll(store, [source], lambda h=hours: NOW + timedelta(hours=6 * h), notify)  # type: ignore[misc]
-    assert len(notify.calls) == 1
-    (change,) = notify.calls[0]
+        report = await poll(store, [source], lambda h=hours: NOW + timedelta(hours=6 * h))  # type: ignore[misc]
+        changes += report.changes
+    (change,) = changes
     assert (change.ccy, change.old, change.new) == ("EUR", Decimal("0.022"), Decimal("0.023"))
 
 
@@ -119,10 +110,10 @@ async def test_a_database_error_costs_one_source_not_the_poll(store: Store, monk
     assert (await store.state(SourceId.GOOGLE_PLAY, Region.EU)).rates == {"EUR": Decimal("0.022")}
 
 
-async def test_changes_from_several_sources_arrive_together(store: Store) -> None:
+async def test_a_report_has_every_source_s_changes(store: Store) -> None:
     app = Fake(SourceId.APP_STORE, [{"EUR": "0.022"}, {"EUR": "0.025"}])
     play = Fake(SourceId.GOOGLE_PLAY, [{"EUR": "0.022"}, {"EUR": "0.025"}])
-    notify = Recorder()
-    await poll(store, [app, play], lambda: NOW, notify)
-    await poll(store, [app, play], lambda: NOW, notify)
-    assert [[c.source for c in call] for call in notify.calls] == [[SourceId.APP_STORE, SourceId.GOOGLE_PLAY]]
+    assert (await poll(store, [app, play], lambda: NOW)).changes == []
+    report = await poll(store, [app, play], lambda: NOW)
+    assert [c.source for c in report.changes] == [SourceId.APP_STORE, SourceId.GOOGLE_PLAY]
+    assert "2 changed" in report.summary()

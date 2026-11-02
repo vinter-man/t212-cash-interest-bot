@@ -1,4 +1,4 @@
-"""SQLite: every check of every source, the rates each successful one found, and subscriptions.
+"""SQLite: every check of every source, and the rates each successful one found.
 
 A check is a row in `checks` whatever its outcome, so "last checked", "stale since" and the rate
 history all come from one table. Rates are stored as text: a Decimal goes in and comes out as the
@@ -39,12 +39,6 @@ CREATE TABLE IF NOT EXISTS rates (
     apy      TEXT NOT NULL,
     PRIMARY KEY (check_id, ccy)
 );
-CREATE TABLE IF NOT EXISTS subscriptions (
-    chat_id INTEGER NOT NULL,
-    ccy     TEXT NOT NULL,
-    since   TEXT NOT NULL,
-    PRIMARY KEY (chat_id, ccy)
-);
 """
 
 
@@ -58,8 +52,7 @@ class Status(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Change:
-    """A source now publishes a different rate than at its previous successful live check (or,
-    for a saved page, than what was on show)."""
+    """A source now publishes a different rate than at its previous successful check."""
 
     source: SourceId
     region: Region
@@ -105,12 +98,10 @@ class Store:
             await self.db.commit()
             return cursor
 
-    async def _last_ok(self, source: SourceId, region: Region, via: str | None = None) -> tuple[int, str, str] | None:
-        """The latest successful check, or the latest that arrived `via` "http" or "upload"."""
+    async def _last_ok(self, source: SourceId, region: Region) -> tuple[int, str, str] | None:
         cursor = await self.db.execute(
-            "SELECT id, at, via FROM checks WHERE source = ? AND region = ? AND status = 'ok' "
-            "AND (? IS NULL OR via = ?) ORDER BY id DESC LIMIT 1",
-            (source, region, via, via),
+            "SELECT id, at, via FROM checks WHERE source = ? AND region = ? AND status = 'ok' ORDER BY id DESC LIMIT 1",
+            (source, region),
         )
         row = await cursor.fetchone()
         return (int(row[0]), str(row[1]), str(row[2])) if row else None
@@ -122,18 +113,13 @@ class Store:
     async def record(
         self, source: SourceId, region: Region, rates: Sequence[Rate], *, at: datetime, via: str = "http"
     ) -> list[Change]:
-        """A successful check. Returns what changed since the previous one: a currency seen for the
-        first time, or one the source stopped listing, is not a change.
-
-        A live check is compared with the previous live check, never with a saved page: a page of
-        unknown age in between must not turn into a second alert for a change already reported.
-        A saved page is compared with whatever was last on show, because that is what its sender
-        wants to know.
-        """
+        """A successful check. Returns what changed since the previous successful one, for the log
+        and for the owner's reply to a saved page: a currency seen for the first time, or one the
+        source stopped listing, is not a change."""
         if any(r.source != source or r.region != region for r in rates):
             raise ValueError(f"rates from another source or region recorded as {source}/{region}")
         async with self._writing:
-            previous = await self._last_ok(source, region, via="http" if via == "http" else None)
+            previous = await self._last_ok(source, region)
             before = await self._rates(previous[0]) if previous else {}
             try:
                 cursor = await self.db.execute(
@@ -198,29 +184,3 @@ class Store:
         cursor = await self.db.execute("SELECT MAX(at) FROM checks WHERE region = ? AND via = ?", (region, via))
         row = await cursor.fetchone()
         return datetime.fromisoformat(row[0]) if row and row[0] else None
-
-    async def subscribe(self, chat_id: int, ccy: str, *, at: datetime) -> bool:
-        """True if this is a new subscription."""
-        cursor = await self._write(
-            "INSERT OR IGNORE INTO subscriptions (chat_id, ccy, since) VALUES (?, ?, ?)",
-            (chat_id, ccy, at.isoformat()),
-        )
-        return cursor.rowcount == 1
-
-    async def unsubscribe(self, chat_id: int, ccy: str) -> bool:
-        """True if there was a subscription to remove."""
-        cursor = await self._write("DELETE FROM subscriptions WHERE chat_id = ? AND ccy = ?", (chat_id, ccy))
-        return cursor.rowcount == 1
-
-    async def forget(self, chat_id: int) -> int:
-        """Drop every subscription of a chat that blocked the bot or no longer exists."""
-        cursor = await self._write("DELETE FROM subscriptions WHERE chat_id = ?", (chat_id,))
-        return cursor.rowcount
-
-    async def subscriptions(self, chat_id: int) -> list[str]:
-        cursor = await self.db.execute("SELECT ccy FROM subscriptions WHERE chat_id = ? ORDER BY ccy", (chat_id,))
-        return [str(row[0]) for row in await cursor.fetchall()]
-
-    async def subscribers(self, ccy: str) -> list[int]:
-        cursor = await self.db.execute("SELECT chat_id FROM subscriptions WHERE ccy = ? ORDER BY chat_id", (ccy,))
-        return [int(row[0]) for row in await cursor.fetchall()]

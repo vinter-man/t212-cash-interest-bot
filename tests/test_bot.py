@@ -368,28 +368,6 @@ class TestTables:
         assert env.session.last().startswith("No disagreement in the EU view")
 
 
-class TestSubscriptions:
-    async def test_subscribe_list_unsubscribe(self, seeded: Env) -> None:
-        await seeded.say("/subscribe eur")
-        assert "Subscribed to EUR" in seeded.session.last()
-        assert "Now: 2.5% (trading212.com/interest-on-cash" in seeded.session.last()
-        await seeded.say("/subscribe EUR")
-        assert "already subscribed" in seeded.session.last()
-        await seeded.say("/subscribe")
-        assert "Subscribed to: EUR." in seeded.session.last()
-        await seeded.say("/unsubscribe EUR")
-        assert "Unsubscribed from EUR" in seeded.session.last()
-        await seeded.say("/unsubscribe EUR")
-        assert "were not subscribed" in seeded.session.last()
-        await seeded.say("/unsubscribe")
-        assert "No subscriptions" in seeded.session.last()
-
-    @pytest.mark.parametrize("command", ["/subscribe ERU", "/unsubscribe eur gbp"])
-    async def test_bad_currency(self, seeded: Env, command: str) -> None:
-        await seeded.say(command)
-        assert "For example: <code>/" in seeded.session.last()
-
-
 class TestSavedPages:
     """The owner forwards a page saved in a browser, when the site will not talk to the bot."""
 
@@ -403,18 +381,11 @@ class TestSavedPages:
         state = await env.services.store.state(SourceId.SITE, Region.EU)
         assert state.via == "upload"
 
-    async def test_an_upload_tells_the_owner_what_differs_and_alerts_nobody(self, seeded: Env) -> None:
-        """A saved page has no date, so its difference from the last check is the owner's news,
-        not an alert: a subscriber is not woken by a page that may be days old."""
-        await seeded.services.store.subscribe(USER_ID, "CZK", at=NOW)
+    async def test_an_upload_tells_the_owner_what_differs(self, seeded: Env) -> None:
         page = fixture("website/cards.html").replace(b'"T212CY":{"CZK":0.03', b'"T212CY":{"CZK":0.028')
         seeded.session.files["cards.html"] = page
         await seeded.send(message(user=OWNER, **self.document("cards.html", 2_000)))
-        reply = seeded.session.last()
-        assert "Different from before:\nCZK: 3% → 2.8%" in reply
-        assert reply.endswith("Subscribers were not told.")
-        recipients = [c.chat_id for c in seeded.session.sent()]
-        assert recipients == [OWNER_ID]  # the reply, and no alert to the subscriber
+        assert seeded.session.last().endswith("Different from before:\nCZK: 3% → 2.8%")
 
     async def test_not_a_saved_page(self, env: Env) -> None:
         env.session.files["notes.html"] = b"<html>shopping list</html>"

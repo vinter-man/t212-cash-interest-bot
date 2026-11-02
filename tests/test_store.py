@@ -1,4 +1,4 @@
-"""The store: what counts as a change, what makes a source stale, and subscriptions."""
+"""The store: what counts as a change, and what makes a source stale."""
 
 from __future__ import annotations
 
@@ -32,17 +32,6 @@ async def test_the_same_value_written_differently_is_not_a_change(store: Store) 
     """ "3.30%" and "3.3%" are one rate."""
     await store.record(APP, Region.EU, rates(APP, {"USD": "0.0330"}), at=NOW)
     assert await store.record(APP, Region.EU, rates(APP, {"USD": "0.033"}), at=LATER) == []
-
-
-async def test_a_saved_page_in_between_does_not_repeat_an_alert(store: Store) -> None:
-    """Live 2.2 -> live 2.5 is one alert. An old page saying 2.2 arrives; the owner hears that it
-    differs from what was on show. The next live 2.5 is no news to subscribers."""
-    site = SourceId.SITE
-    await store.record(site, Region.EU, rates(site, {"EUR": "0.022"}), at=NOW)
-    assert len(await store.record(site, Region.EU, rates(site, {"EUR": "0.025"}), at=LATER)) == 1
-    upload = await store.record(site, Region.EU, rates(site, {"EUR": "0.022"}), at=LATER, via="upload")
-    assert [(c.old, c.new) for c in upload] == [(Decimal("0.025"), Decimal("0.022"))]
-    assert await store.record(site, Region.EU, rates(site, {"EUR": "0.025"}), at=LATEST) == []
 
 
 async def test_currencies_that_appear_or_disappear_are_not_changes(store: Store) -> None:
@@ -79,8 +68,8 @@ async def test_a_check_is_written_whole_or_not_at_all(store: Store) -> None:
     twice = rates(APP, {"EUR": "0.030"}, at=LATER) * 2
     with pytest.raises(sqlite3.IntegrityError):
         await store.record(APP, Region.EU, twice, at=LATER)
-    await store.subscribe(1, "EUR", at=LATER)  # the next write must not commit half a check
-    state = await store.state(APP, Region.EU)
+    await store.record_failure(APP, Region.EU, Status.UNAVAILABLE, "HTTP 502", at=LATER)  # the next write
+    state = await store.state(APP, Region.EU)  # must not have committed half a check
     assert (state.ok_at, state.rates) == (NOW, {"EUR": Decimal("0.022")})
 
 
@@ -140,24 +129,9 @@ async def test_last_check_counts_the_poller_not_uploads(store: Store) -> None:
     assert await store.last_check(Region.UK) is None
 
 
-async def test_subscriptions(store: Store) -> None:
-    assert await store.subscribe(1, "EUR", at=NOW)
-    assert not await store.subscribe(1, "EUR", at=NOW)
-    assert await store.subscribe(1, "GBP", at=NOW)
-    assert await store.subscribe(2, "EUR", at=NOW)
-    assert await store.subscriptions(1) == ["EUR", "GBP"]
-    assert await store.subscribers("EUR") == [1, 2]
-    assert await store.unsubscribe(1, "EUR")
-    assert not await store.unsubscribe(1, "EUR")
-    assert await store.forget(2) == 1
-    assert await store.subscribers("EUR") == []
-
-
 async def test_a_file_database_survives_a_restart(tmp_path: Path) -> None:
     path = tmp_path / "nested" / "bot.db"
     async with await Store.open(path) as first:
         await first.record(APP, Region.EU, rates(APP, {"EUR": "0.0355"}), at=NOW)
-        await first.subscribe(7, "EUR", at=NOW)
     async with await Store.open(path) as second:
         assert (await second.state(APP, Region.EU)).rates == {"EUR": Decimal("0.0355")}
-        assert await second.subscribers("EUR") == [7]

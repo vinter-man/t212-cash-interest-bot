@@ -98,45 +98,12 @@ class TestCaption:
         assert len(replies.rate_caption(result, rows(states)[0])) <= 1024
 
 
-def test_change_alert() -> None:
-    changes = [
-        Change(SourceId.APP_STORE, Region.EU, "EUR", Decimal("0.022"), Decimal("0.025"), NOW),
-        Change(SourceId.GOOGLE_PLAY, Region.EU, "EUR", Decimal("0.022"), Decimal("0.02"), NOW),
-    ]
-    states = {
-        SourceId.SITE: state(SourceId.SITE, SITE_EU),
-        SourceId.CARDS: SourceState(SourceId.CARDS),
-        SourceId.APP_STORE: state(SourceId.APP_STORE, {"EUR": "0.025"}),
-        SourceId.GOOGLE_PLAY: state(SourceId.GOOGLE_PLAY, {"EUR": "0.02"}),
-    }
-    text = replies.change_alert(changes, states)
-    assert text.startswith("<b>EUR rate changed</b> (EU view)")
-    assert "▲ App Store: 2.2% → <b>2.5%</b>" in text
-    assert "▼ Google Play: 2.2% → <b>2%</b>" in text
-    assert "Now: 2.5% on the trading212.com/interest-on-cash page and App Store; 2% on Google Play." in text
-    assert "<code>/rate EUR 10000</code> · <code>/unsubscribe EUR</code>" in text
-
-
 def test_the_two_website_pages_are_one_website() -> None:
     site, cards, app_store = SourceId.SITE, SourceId.CARDS, SourceId.APP_STORE
     assert replies.says([site, cards]) == "the website says"
     assert replies.says([app_store, SourceId.GOOGLE_PLAY]) == "App Store and Google Play say"
     assert replies.says([site, cards, app_store]) == "the website and App Store say"
     assert replies.says([cards]) == "the trading212.com/cards page says"
-    assert replies.names([site, cards], stale={cards}) == "the website (stale)"
-
-
-def test_an_alert_marks_what_is_stale() -> None:
-    change = Change(SourceId.APP_STORE, Region.EU, "EUR", Decimal("0.022"), Decimal("0.025"), LATER)
-    blocked = {"failing_since": LATER, "problem": "HTTP 403, bot check", "via": "upload"}
-    states = {
-        SourceId.SITE: state(SourceId.SITE, SITE_EU, **blocked),  # type: ignore[arg-type]
-        SourceId.CARDS: state(SourceId.CARDS, SITE_EU, **blocked),  # type: ignore[arg-type]
-        SourceId.APP_STORE: state(SourceId.APP_STORE, {"EUR": "0.025"}, at=LATER),
-        SourceId.GOOGLE_PLAY: state(SourceId.GOOGLE_PLAY, STORE_EU, at=LATER),
-    }
-    text = replies.change_alert([change], states)
-    assert "Now: 2.5% on the website (stale) and App Store; 2.2% on Google Play." in text
 
 
 def test_a_warning_starts_with_a_capital() -> None:
@@ -154,10 +121,6 @@ def test_tax_is_said_per_company() -> None:
     assert "ISA" in uk
     assert replies.TAX_ARTICLE in eu
     assert replies.TAX_ARTICLE in uk
-
-
-def test_subscribing_with_no_rate_yet() -> None:
-    assert replies.subscribed("CHF", True, None).startswith("Subscribed to CHF: I will write")
 
 
 def test_upload_reply_lists_the_changes() -> None:

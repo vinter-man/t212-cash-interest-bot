@@ -23,8 +23,7 @@ arrives.
 And it checks the rate itself. On 1 November 2026 the website quoted **2.5%** on euros for EU
 clients, while the App Store and Google Play listings said **2.2%** (pounds 3.55% against 3.8%,
 dollars 3.4% against 3.3%). On €20,000 over five years that gap is €329.16. The bot reads all
-four places every six hours, marks where they disagree, and messages you when a check finds a
-rate changed.
+four places every six hours and marks where they disagree.
 
 Try it: [@t212_cash_interest_bot](https://t.me/t212_cash_interest_bot)
 
@@ -39,7 +38,6 @@ Try it: [@t212_cash_interest_bot](https://t.me/t212_cash_interest_bot)
   * [A balance that earns less than a cent a day](#small)
   * [Every rate from every source](#rates)
   * [Where they disagree](#diff)
-  * [When a rate changes](#subscribe)
   * [When you type something odd](#errors)
 * [Commands](#commands)
 * [The sources](#sources)
@@ -119,27 +117,6 @@ source, with the time of its last check.
 
 ![diff](docs/assets/diff.png)
 
-### <a name="subscribe"></a> When a rate changes
-
-`/subscribe EUR` and the bot writes when a check finds a source's euro rate changed, with what
-every source says at that moment. Alerts come only from the bot's own checks: the stores every
-six hours, and the website whenever it lets the bot read it (a page the owner sends is not a
-check, see [The sources](#sources)). `/subscribe` on its own lists your subscriptions;
-`/unsubscribe EUR` stops one.
-
-![subscribe](docs/assets/subscribe.png)
-
-> :shipit: A failure never sends an alert (`poller.py`, `Store.record`). A check that fails —
-> blocked, timed out, a parser that finds nothing — is recorded and nothing else happens: the
-> last good value stays on show, marked "stale since", and nobody is notified. A change is only
-> a successful live check that disagrees with the previous *successful live* check of the same
-> source, so a failure in between can neither hide a change nor invent one, and nor can a saved
-> page the owner sends. A currency appearing in a listing or dropping out of it isn't a change
-> either, and a parser that reads 25% somewhere fails the whole page instead of reporting one bad
-> row. A test plays exactly that sequence (value, outage, same value, unreadable page, new value)
-> and expects one alert. What this can't catch is a parser reading a plausible wrong number,
-> which is what the saved-page tests and the nightly live check are for.
-
 ### <a name="errors"></a> When you type something odd
 
 The parser is a tokenizer: the words can come in any order and any case. An amount can be `20k`,
@@ -167,8 +144,6 @@ amounts, two currencies or two periods are an error rather than a guess.
 | `/rate <CCY> <amount> [<period>]` | interest day by day, as a chart: `/rate EUR 20000 5y` |
 | `/rates` | every rate from every source, disagreements marked |
 | `/diff` | only the currencies the sources disagree on, with each source's last check |
-| `/subscribe <CCY>` | a message when a check finds a new rate for that currency at any source |
-| `/unsubscribe <CCY>` | stop those messages |
 | `/help`, `/about` | how to ask; the formula, the sources, tax and the fine print |
 
 ---
@@ -194,10 +169,11 @@ an answer, so that source is left alone until the next cycle.
 > pretend to be a browser. It still asks every six hours (so the day the site lets it in,
 > nothing needs changing) and records "HTTP 403, bot check". It keeps showing the last value it
 > has, marked stale, and the owner can send it the page saved from their own browser: it reads
-> the same JSON from the file and shows it as "a saved page sent" on that day. A saved page
-> carries no date, so it never alerts subscribers; the owner's reply lists what differs. The website parsers
-> are tested on exactly such saved pages ([tests/fixtures](tests/fixtures)), and the nightly live
-> check skips the website when it is challenged rather than reporting a broken parser.
+> the same JSON from the file, shows it as "a saved page sent" on that day, and replies with what
+> differs from before. A failed check never replaces a value: the last good one stays on show,
+> marked "stale since". The website parsers are tested on exactly such saved pages
+> ([tests/fixtures](tests/fixtures)), and the nightly live check skips the website when it is
+> challenged rather than reporting a broken parser.
 >
 > The stores answer normally. Their listings are written by hand, separately from the website,
 > which is why they are the copy most likely to drift: on 1 November 2026 all three currencies
@@ -243,7 +219,7 @@ docker compose logs -f
 Long polling, so no ports are published. Read-only root filesystem, no capabilities, a non-root
 user, and a healthcheck on a heartbeat file that a background task touches each minute after a
 successful `getMe`, so "healthy" means the process is alive and can reach Telegram. The SQLite
-file (every check of every source, and the subscriptions) lives in the `data` volume.
+file (every check of every source, and the rates each one found) lives in the `data` volume.
 
 ### On a VPS
 
@@ -260,14 +236,13 @@ next poll is six hours after the last one in the database, or straight away if t
 ```
 sources ──→ poller ──→ store (SQLite) ──→ board ──→ replies + chart ──→ Telegram
 4 parsers   6-hourly    every check        side by side   /rate /rates /diff
-            changes ──→ subscribers
 ```
 
 | Module | What is in it |
 |---|---|
 | `calc/` | the arithmetic and nothing else: no I/O, no clock, `Decimal` only |
 | `sources/` | one parser per source behind `fetch() -> list[Rate(ccy, apy, source, region, fetched_at)]`, and the one polite GET they share |
-| `store/` | aiosqlite: every check whatever its outcome, the rates of the successful ones, subscriptions |
+| `store/` | aiosqlite: every check whatever its outcome, and the rates of the successful ones |
 | `poller.py` | one cycle over the sources; what counts as a change |
 | `board.py` | the sources side by side: disagreements, staleness, which rate to calculate with |
 | `answer.py`, `charts.py` | a `/rate` answer worked out once, and drawn with matplotlib in the house style |
@@ -298,10 +273,10 @@ The tests are the part of this I care most about:
 - **The bot through the real dispatcher** (`test_bot.py`, `test_app.py`): a fake Bot API session
   records every call, so filters, callback data, parsing, the chart and the database run as in
   production, including what Telegram really does: a forged button, a second tap ("message is
-  not modified"), a chart that fails to draw, flood control, a user who blocked the bot.
+  not modified"), a chart that fails to draw, a profile update that hits flood control.
 - **The program end to end** (`tests/e2e`): `python -m cash_interest` started as a separate
   process against a small fake Telegram server, as Docker starts it: commands in, a PNG uploaded,
-  a button pressed, a subscription in the database, and a clean exit on SIGTERM.
+  a button pressed, and a clean exit on SIGTERM.
 - **Live** (`tests/live`, nightly): the parsers against the real pages, failing on a page that
   answers but yields nothing or a rate outside 0–15%. A failure opens an issue with a snapshot
   of what every source says; [Check rates now](https://github.com/vinter-man/t212-cash-interest-bot/actions/workflows/check-rates.yml)

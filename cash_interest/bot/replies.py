@@ -6,9 +6,8 @@ escape a full stop in `€1,234.56`.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
-from decimal import Decimal
 from html import escape
 
 from cash_interest.answer import Answer
@@ -65,19 +64,14 @@ def source_line(state: SourceState) -> str:
     return f"{name}: stale since {when(state.failing_since)} ({problem}){read}"
 
 
-def names(sources: Sequence[SourceId], stale: Collection[SourceId] = ()) -> str:
-    """Sources in prose; both website pages together are just "the website". Those in `stale`
-    say so."""
-
-    def label(name: str, *of: SourceId) -> str:
-        return f"{name} (stale)" if all(s in stale for s in of) else name
-
+def names(sources: Sequence[SourceId]) -> str:
+    """Sources in prose; both website pages together are just "the website"."""
     website = [s for s in sources if s in (SourceId.SITE, SourceId.CARDS)]
-    parts = [label(s.label, s) for s in sources if s not in website]
+    parts = [s.label for s in sources if s not in website]
     if len(website) == 2:
-        parts.insert(0, "the website (stale)" if any(s in stale for s in website) else "the website")
+        parts.insert(0, "the website")
     elif website:
-        parts.insert(0, label(f"the {website[0].label} page", website[0]))
+        parts.insert(0, f"the {website[0].label} page")
     return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
@@ -189,46 +183,6 @@ def diff(states: Mapping[SourceId, SourceState], region: Region) -> str:
     return "\n\n".join(blocks)
 
 
-# --- alerts and subscriptions ----------------------------------------------------------------
-
-
-def change_alert(changes: Sequence[Change], states: Mapping[SourceId, SourceState]) -> str:
-    """One message for one currency's changes in a poll, with what every source says now."""
-    ccy = changes[0].ccy
-    lines = [f"<b>{ccy} rate changed</b> ({changes[0].region} view)"]
-    for change in changes:
-        arrow = "▲" if change.new > change.old else "▼"
-        lines.append(f"{arrow} {change.source.label}: {pct(change.old)} → <b>{pct(change.new)}</b>")
-    by_rate: dict[Decimal, list[SourceId]] = {}
-    for source in ORDER:
-        if ccy in states[source].rates:
-            by_rate.setdefault(states[source].rates[ccy], []).append(source)
-    stale = {source for source, state in states.items() if state.stale}
-    now = "; ".join(f"{pct(apy)} on {names(sources, stale)}" for apy, sources in by_rate.items())
-    lines += ["", f"Now: {now}.", f"<code>/rate {ccy} 10000</code> · <code>/unsubscribe {ccy}</code>"]
-    return "\n".join(lines)
-
-
-def subscribed(ccy: str, new: bool, quote: Quote | None) -> str:
-    current = f" Now: {pct(quote.apy)} ({provenance(quote)})." if quote else ""
-    if not new:
-        return f"You are already subscribed to {ccy}.{current}"
-    return (
-        f"Subscribed to {ccy}: I will write when a check finds a new {ccy} rate at any source.{current}\n"
-        f"<code>/unsubscribe {ccy}</code> to stop."
-    )
-
-
-def unsubscribed(ccy: str, had: bool) -> str:
-    return f"Unsubscribed from {ccy}." if had else f"You were not subscribed to {ccy}."
-
-
-def subscriptions(currencies: Sequence[str]) -> str:
-    if not currencies:
-        return "No subscriptions. <code>/subscribe EUR</code> to get a message when the EUR rate changes."
-    return f"Subscribed to: {', '.join(currencies)}.\n<code>/unsubscribe EUR</code> to stop one."
-
-
 # --- help ------------------------------------------------------------------------------------
 
 
@@ -239,8 +193,7 @@ def start(region: Region) -> str:
         "and I check whether their website and app store listings quote the same rates.\n\n"
         "<code>/rate EUR 20000 5y</code> — interest, day by day\n"
         "<code>/rates</code> — every rate from every source\n"
-        "<code>/diff</code> — only where the sources disagree\n"
-        "<code>/subscribe EUR</code> — a message when the rate changes\n\n"
+        "<code>/diff</code> — only where the sources disagree\n\n"
         f"{region} view ({region.company}). <i>{DISCLAIMER}</i> /about"
     )
 
@@ -254,8 +207,6 @@ def help_text(region: Region) -> str:
         "<code>EUR 20000 5y</code>.\n\n"
         "<b>/rates</b> — the table: each currency, each source, with disagreements marked\n"
         "<b>/diff</b> — the disagreements only, with when each source was last checked\n"
-        "<b>/subscribe EUR</b>, <b>/unsubscribe EUR</b> — a message when a check finds a new rate; "
-        "<b>/subscribe</b> alone lists yours\n"
         "<b>/about</b> — the formula, the sources, tax and the fine print\n\n"
         f"{region} view. <i>{DISCLAIMER}</i>"
     )
@@ -271,7 +222,7 @@ def about(region: Region, poll_hours: int) -> str:
         "Each day's interest is paid rounded down to the cent; the fraction is carried to the next "
         f'day, and what is paid is cash, so it compounds. <a href="{FORMULA}">Source</a>.\n\n'
         f"<b>The sources</b> ({region} view, {region.company}):\n{sources}\n"
-        "If a source fails, the last value it gave is shown, marked stale, and no alert is sent.\n\n"
+        "If a source fails, the last value it gave is shown, marked stale.\n\n"
         f'<b>Tax.</b> {TAX[region]} The bot shows interest before tax. <a href="{TAX_ARTICLE}">Source</a>.\n\n'
         f'<a href="{REPO}">Source code</a>'
     )
@@ -284,7 +235,7 @@ def upload_done(source: SourceId, count: int, changes: Sequence[Change]) -> str:
     changed = "".join(f"\n{c.ccy}: {pct(c.old)} → {pct(c.new)}" for c in changes)
     if not changes:
         return f"Recorded {count} rates from {source.label}. Nothing changed."
-    return f"Recorded {count} rates from {source.label}. Different from before:{changed}\nSubscribers were not told."
+    return f"Recorded {count} rates from {source.label}. Different from before:{changed}"
 
 
 def upload_failed(reason: str) -> str:

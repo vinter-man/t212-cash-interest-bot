@@ -27,7 +27,7 @@ from cash_interest.answer import answer
 from cash_interest.board import pick, rows
 from cash_interest.bot import keyboards as kb
 from cash_interest.bot import replies
-from cash_interest.bot.parsing import EXAMPLE, InputError, Query, parse_currency, parse_query
+from cash_interest.bot.parsing import EXAMPLE, InputError, Query, parse_query
 from cash_interest.sources import FetchError, Region, SourceId, utcnow
 from cash_interest.sources.website import page_rates, page_source
 from cash_interest.store import Store
@@ -83,8 +83,8 @@ async def send_reply(message: Message, reply: Reply) -> None:
     await message.answer_photo(photo, caption=reply.caption, reply_markup=reply.keyboard)
 
 
-def input_error(error: InputError, example: str = EXAMPLE) -> str:
-    return f"{escape(str(error))}\nFor example: <code>{example}</code>"
+def input_error(error: InputError) -> str:
+    return f"{escape(str(error))}\nFor example: <code>{EXAMPLE}</code>"
 
 
 async def on_start(message: Message, services: Services) -> None:
@@ -123,34 +123,6 @@ async def on_rates(message: Message, services: Services) -> None:
 async def on_diff(message: Message, services: Services) -> None:
     states = await services.store.states(services.region)
     await message.answer(replies.diff(states, services.region))
-
-
-async def on_subscribe(message: Message, command: CommandObject, services: Services) -> None:
-    store = services.store
-    if not command.args:
-        await message.answer(replies.subscriptions(await store.subscriptions(message.chat.id)))
-        return
-    try:
-        ccy = parse_currency(command.args, await known_currencies(services))
-    except InputError as error:
-        await message.answer(input_error(error, "/subscribe EUR"))
-        return
-    new = await store.subscribe(message.chat.id, ccy, at=services.clock())
-    quote = pick(await store.states(services.region), ccy)
-    await message.answer(replies.subscribed(ccy, new, quote))
-
-
-async def on_unsubscribe(message: Message, command: CommandObject, services: Services) -> None:
-    store = services.store
-    if not command.args:
-        await message.answer(replies.subscriptions(await store.subscriptions(message.chat.id)))
-        return
-    try:
-        ccy = parse_currency(command.args, await known_currencies(services))
-    except InputError as error:
-        await message.answer(input_error(error, "/unsubscribe EUR"))
-        return
-    await message.answer(replies.unsubscribed(ccy, await store.unsubscribe(message.chat.id, ccy)))
 
 
 async def on_rate_button(callback: CallbackQuery, callback_data: kb.RateCb, services: Services) -> None:
@@ -197,8 +169,6 @@ async def on_document(message: Message, services: Services, bot: Bot) -> None:
     except FetchError as error:
         await message.answer(replies.upload_failed(str(error)))
         return
-    # Recorded, but no alert goes out: a saved page carries no date, so only the owner, who knows
-    # when they saved it, hears what differs. Subscribers hear from the live checks.
     changes = await services.store.record(source, services.region, rates, at=at, via="upload")
     await message.answer(replies.upload_done(source, len(rates), changes))
 
@@ -220,8 +190,6 @@ def create_router() -> Router:
     router.message.register(on_rate, Command("rate"))
     router.message.register(on_rates, Command("rates"))
     router.message.register(on_diff, Command("diff"))
-    router.message.register(on_subscribe, Command("subscribe"))
-    router.message.register(on_unsubscribe, Command("unsubscribe"))
     # Plain text and files are for the bot only in a private chat; in a group they are just talk.
     private = F.chat.type == "private"
     router.message.register(on_document, private, F.document)

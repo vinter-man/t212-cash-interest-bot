@@ -104,12 +104,6 @@ async def test_the_program(telegram: FakeTelegram, tmp_path: Path) -> None:
         assert "EUR 2.2% · 5 years" in media["caption"]
         assert edit.files[media["media"].removeprefix("attach://")].startswith(PNG)
 
-        telegram.push_text("/subscribe eur")
-        subscribed = (await reply("sendMessage", 3))[-1]
-        assert "Subscribed to EUR" in subscribed.params["text"]
-        async with await Store.open(db) as store:
-            assert await store.subscribers("EUR") == [5150]
-
         assert (tmp_path / "heartbeat").exists()
     finally:
         if process.returncode is None:

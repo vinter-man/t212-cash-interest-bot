@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -19,31 +18,26 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BotCommand
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from cash_interest.bot import replies
 from cash_interest.bot.handlers import Services, create_router
 from cash_interest.config import Settings
 from cash_interest.poller import poll
 from cash_interest.sources import all_sources, http_client
-from cash_interest.store import Change, Store
+from cash_interest.store import Store
 
 log = logging.getLogger(__name__)
 
 POLL_HOURS = 6
 HEARTBEAT_EVERY = 60
-# Telegram allows about 30 messages a second to different chats; stay well under it.
-SEND_GAP = 0.05
 
 COMMANDS = [
     ("rate", "Interest on a balance: /rate EUR 20000 5y"),
     ("rates", "Every rate from every source"),
     ("diff", "Where the sources disagree"),
-    ("subscribe", "A message when a rate changes: /subscribe EUR"),
-    ("unsubscribe", "Stop those messages: /unsubscribe EUR"),
     ("help", "How to ask"),
     ("about", "The formula, the sources, tax"),
 ]
@@ -69,38 +63,6 @@ def build_dispatcher(services: Services) -> Dispatcher:
     dp["services"] = services
     dp.include_router(create_router())
     return dp
-
-
-def make_notifier(
-    bot: Bot, services: Services, sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
-) -> Callable[[Sequence[Change]], Awaitable[None]]:
-    """Sends each subscriber one message per changed currency."""
-
-    async def send(chat_id: int, text: str) -> None:
-        try:
-            await bot.send_message(chat_id, text)
-        except TelegramRetryAfter as error:
-            await sleep(error.retry_after)
-            await bot.send_message(chat_id, text)
-
-    async def notify(changes: Sequence[Change]) -> None:
-        states = await services.store.states(services.region)
-        by_ccy: dict[str, list[Change]] = {}
-        for change in changes:
-            by_ccy.setdefault(change.ccy, []).append(change)
-        for ccy, group in by_ccy.items():
-            text = replies.change_alert(group, states)
-            for chat_id in await services.store.subscribers(ccy):
-                try:
-                    await send(chat_id, text)
-                except TelegramForbiddenError:  # blocked the bot, or the chat is gone
-                    await services.store.forget(chat_id)
-                    log.info("dropped the subscriptions of a chat that blocked the bot")
-                except TelegramAPIError as error:
-                    log.warning("alert not delivered: %s", type(error).__name__)
-                await sleep(SEND_GAP)
-
-    return notify
 
 
 async def heartbeat(bot: Bot, path: Path) -> bool:
@@ -166,7 +128,6 @@ async def run(settings: Settings) -> None:
     store = await Store.open(settings.db_path)
     bot = make_bot(settings)
     services = Services(store, settings.region, owner_id=settings.owner_id, poll_hours=POLL_HOURS)
-    notify = make_notifier(bot, services)
     dp = build_dispatcher(services)
     scheduler = AsyncIOScheduler(timezone=UTC)
     heart: asyncio.Task[None] | None = None
@@ -175,7 +136,7 @@ async def run(settings: Settings) -> None:
             sources = all_sources(http, settings.region)
 
             async def poll_job() -> None:
-                await poll(store, sources, services.clock, notify)
+                await poll(store, sources, services.clock)
 
             start_at = first_run(await store.last_check(settings.region), services.clock())
             log.info("first poll at %s", start_at.isoformat(timespec="minutes"))

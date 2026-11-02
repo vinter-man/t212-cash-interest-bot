@@ -184,14 +184,3 @@ def parse_query(text: str, known: Collection[str] = ()) -> Query:
     if reader.amount is None:
         raise InputError("How much? Add an amount such as 20000 or 20k.")
     return Query(reader.ccy, reader.amount, reader.period or YEAR)
-
-
-def parse_currency(text: str, known: Collection[str] = ()) -> str:
-    """The one currency of `/subscribe EUR`, from what follows the command."""
-    words = text.split()
-    if len(words) != 1:
-        raise InputError("One currency code, please.")
-    word = words[0].lower()
-    if word in _SYMBOLS:
-        return _SYMBOLS[word]
-    return known_currency(word, known)

@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 
-from cash_interest.bot.parsing import InputError, parse_currency, parse_query
+from cash_interest.bot.parsing import InputError, parse_query
 
 KNOWN = {"EUR", "GBP", "USD", "PLN", "CZK", "HUF", "RON", "SEK", "DKK", "NOK"}
 
@@ -91,14 +91,3 @@ def test_explained(text: str, error: str) -> None:
 def test_a_currency_with_no_data_yet_is_still_a_currency() -> None:
     """CHF is a currency an account can hold; whether anyone quotes it is the handler's question."""
     assert parse_query("chf 1000", set()).ccy == "CHF"
-
-
-@pytest.mark.parametrize(("text", "ccy"), [("EUR", "EUR"), ("gbp", "GBP"), ("€", "EUR"), (" usd ", "USD")])
-def test_currency(text: str, ccy: str) -> None:
-    assert parse_currency(text, KNOWN) == ccy
-
-
-@pytest.mark.parametrize(("text", "error"), [("", "One currency"), ("eur gbp", "One currency")])
-def test_currency_errors(text: str, error: str) -> None:
-    with pytest.raises(InputError, match=error):
-        parse_currency(text, KNOWN)

@@ -19,10 +19,9 @@ from typing import Any
 import httpx
 from aiogram.types import InlineKeyboardMarkup
 
-from cash_interest.board import pick
 from cash_interest.bot import replies
 from cash_interest.bot.handlers import Reply, Services, build_reply, input_error, known_currencies
-from cash_interest.bot.parsing import InputError, parse_currency, parse_query
+from cash_interest.bot.parsing import InputError, parse_query
 from cash_interest.sources import Rate, Region, SourceId
 from cash_interest.sources.stores import AppStore, GooglePlay
 from cash_interest.sources.website import page_rates
@@ -111,26 +110,6 @@ async def _rates_stale(services: Services) -> Shot:
     return [{"out": "/rates"}, {"in": {"html": replies.rates_table(states, REGION), "keyboard": []}}]
 
 
-async def _subscribe(services: Services) -> Shot:
-    store = services.store
-    ccy = parse_currency("EUR", await known_currencies(services))
-    new = await store.subscribe(5150, ccy, at=NOW)
-    subscribed = replies.subscribed(ccy, new, pick(await store.states(REGION), ccy))
-    # Six hours later the App Store listing catches up with the website.
-    later = NOW + timedelta(hours=6)
-    async with httpx.AsyncClient() as client:
-        listing = (FIXTURES / "stores" / "app-store-cy.json").read_text(encoding="utf-8")
-        body = listing.replace("2.2% on EUR", "2.5% on EUR").encode()
-        found = AppStore(client, REGION).parse(body, later)
-    changes = await store.record(SourceId.APP_STORE, REGION, found, at=later)
-    alert = replies.change_alert(changes, await store.states(REGION))
-    return [
-        {"out": "/subscribe EUR"},
-        {"in": {"html": subscribed, "keyboard": []}},
-        {"in": {"html": alert, "keyboard": []}},
-    ]
-
-
 async def build(public: Path) -> dict[str, Shot]:
     """Every shot; the charts go into `public`, which must exist."""
     shots: dict[str, Shot] = {}
@@ -147,11 +126,10 @@ async def build(public: Path) -> dict[str, Shot]:
         for line in await _error(services, text)
     ]
     await services.store.close()
-    for name, make in (("rates", _rates_stale), ("subscribe", _subscribe)):
-        # Each of these changes the store, so each starts from its own copy of the seed.
-        services = await _seeded()
-        shots[name] = await make(services)
-        await services.store.close()
+    # The table changes the store, so it starts from its own copy of the seed.
+    services = await _seeded()
+    shots["rates"] = await _rates_stale(services)
+    await services.store.close()
     return shots
 
 

@@ -49,7 +49,7 @@ container's healthcheck: a heartbeat file a background task touches each minute 
 successful `getMe`, so "healthy" means the process is alive and reaches Telegram. Unhealthy after
 a deploy that started from a healthy state means an automatic rollback to the previous commit.
 
-`.env` and the `data` volume (the SQLite file: check history and subscriptions) are never touched
+`.env` and the `data` volume (the SQLite file: the history of every check) are never touched
 by a deploy. A restart does not poll the sources early either: the next poll is six hours after
 the last one recorded in the database.
 
@@ -61,4 +61,4 @@ trading212.com answers anything that is not a browser with a bot check, and the 
 pretend to be one. To refresh the website's rates, open the page in a browser, save it
 (`Save Page As…`, HTML), and send the file to the bot from the `OWNER_ID` account. It reads the
 same JSON the live check would, records it as "a saved page sent" that day, and replies with
-whatever differs from before. Subscribers are not alerted: the bot cannot tell how old the page is.
+whatever differs from before.

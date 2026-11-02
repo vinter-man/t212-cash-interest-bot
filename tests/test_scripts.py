@@ -14,7 +14,7 @@ from scripts import export_shots, trim_page
 from tests.conftest import FIXTURES, NOW, fixture
 
 PNG = b"\x89PNG\r\n\x1a\n"
-SHOTS = {"rate", "rate_app", "small", "diff", "errors", "rates", "subscribe"}
+SHOTS = {"rate", "rate_app", "small", "diff", "errors", "rates"}
 
 
 class TestExportShots:
@@ -36,7 +36,7 @@ class TestExportShots:
         assert "HTTP 403, bot check" in table
         assert "iOS: checked 02 Nov 02:30" in table
 
-    async def test_errors_and_alerts(self, tmp_path: Path) -> None:
+    async def test_errors(self, tmp_path: Path) -> None:
         shots = await export_shots.build(tmp_path)
         assert [item["out"] for item in shots["errors"] if "out" in item] == [
             "/rate eru 20000",
@@ -44,8 +44,6 @@ class TestExportShots:
             "/rate eur 20000 11y",
         ]
         assert "Did you mean EUR?" in shots["errors"][1]["in"]["html"]
-        alert = shots["subscribe"][2]["in"]["html"]
-        assert "▲ App Store: 2.2% → <b>2.5%</b>" in alert
 
     def test_main_writes_the_json(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(export_shots, "OUT", tmp_path / "src" / "shots.json")
