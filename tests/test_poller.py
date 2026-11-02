@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 import httpx
 import pytest
@@ -99,6 +101,22 @@ async def test_a_stale_value_stays_on_show(store: Store) -> None:
     state = await store.state(SourceId.SITE, Region.EU)
     assert state.stale
     assert state.rates == {"EUR": Decimal("0.025")}
+
+
+async def test_a_database_error_costs_one_source_not_the_poll(store: Store, monkeypatch: pytest.MonkeyPatch) -> None:
+    record = store.record
+
+    async def flaky(source: SourceId, *args: Any, **kwargs: Any) -> list[Change]:
+        if source is SourceId.APP_STORE:
+            raise sqlite3.OperationalError("database is locked")
+        return await record(source, *args, **kwargs)
+
+    monkeypatch.setattr(store, "record", flaky)
+    sources = [Fake(SourceId.APP_STORE, [{"EUR": "0.022"}]), Fake(SourceId.GOOGLE_PLAY, [{"EUR": "0.022"}])]
+    report = await poll(store, sources, lambda: NOW)
+    assert report.failed == {SourceId.APP_STORE: "not recorded"}
+    assert report.found == {SourceId.GOOGLE_PLAY: 1}
+    assert (await store.state(SourceId.GOOGLE_PLAY, Region.EU)).rates == {"EUR": Decimal("0.022")}
 
 
 async def test_changes_from_several_sources_arrive_together(store: Store) -> None:

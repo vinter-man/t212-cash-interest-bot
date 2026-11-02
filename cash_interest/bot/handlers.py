@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from html import escape
@@ -28,10 +28,9 @@ from cash_interest.board import pick, rows
 from cash_interest.bot import keyboards as kb
 from cash_interest.bot import replies
 from cash_interest.bot.parsing import EXAMPLE, InputError, Query, parse_currency, parse_query
-from cash_interest.poller import save
 from cash_interest.sources import FetchError, Region, SourceId, utcnow
 from cash_interest.sources.website import page_rates, page_source
-from cash_interest.store import Change, Store
+from cash_interest.store import Store
 
 log = logging.getLogger(__name__)
 
@@ -46,8 +45,6 @@ class Services:
     clock: Callable[[], datetime] = utcnow
     owner_id: int | None = None
     poll_hours: int = 6
-    # Set by the app once the bot exists: tells subscribers about changes an upload records.
-    notify: Callable[[Sequence[Change]], Awaitable[None]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,9 +75,8 @@ async def build_reply(services: Services, query: Query, prefer: SourceId | None 
 
 
 async def send_reply(message: Message, reply: Reply) -> None:
-    if reply.chart is None or len(reply.caption) > replies.CAPTION_LIMIT:
-        if reply.chart is not None:
-            await message.answer_photo(BufferedInputFile(reply.chart, "interest.png"))
+    """The chart with the text as its caption; the text alone if the chart could not be drawn."""
+    if reply.chart is None:
         await message.answer(reply.caption, reply_markup=reply.keyboard)
         return
     photo = BufferedInputFile(reply.chart, "interest.png")
@@ -173,7 +169,7 @@ async def on_rate_button(callback: CallbackQuery, callback_data: kb.RateCb, serv
     if message is None or isinstance(message, InaccessibleMessage):
         return
     try:
-        if reply.chart is not None and message.photo and len(reply.caption) <= replies.CAPTION_LIMIT:
+        if reply.chart is not None and message.photo:
             media = InputMediaPhoto(media=BufferedInputFile(reply.chart, "interest.png"), caption=reply.caption)
             await message.edit_media(media, reply_markup=reply.keyboard)
         else:
@@ -188,8 +184,8 @@ async def on_document(message: Message, services: Services, bot: Bot) -> None:
         await message.answer("I only read text. /help shows what to ask.")
         return
     document = message.document
-    if document is None or (document.file_size or 0) > MAX_UPLOAD:
-        await message.answer(replies.upload_failed("the file is larger than a saved page can be"))
+    if document is None or document.file_size is None or document.file_size > MAX_UPLOAD:
+        await message.answer(replies.upload_failed("the file is larger than a saved page can be, or of no stated size"))
         return
     buffer = io.BytesIO()
     await bot.download(document, destination=buffer)
@@ -201,10 +197,10 @@ async def on_document(message: Message, services: Services, bot: Bot) -> None:
     except FetchError as error:
         await message.answer(replies.upload_failed(str(error)))
         return
-    changes = await save(services.store, source, services.region, rates, at=at, via="upload")
+    # Recorded, but no alert goes out: a saved page carries no date, so only the owner, who knows
+    # when they saved it, hears what differs. Subscribers hear from the live checks.
+    changes = await services.store.record(source, services.region, rates, at=at, via="upload")
     await message.answer(replies.upload_done(source, len(rates), changes))
-    if changes and services.notify is not None:
-        await services.notify(changes)
 
 
 async def on_text(message: Message, services: Services) -> None:
@@ -226,8 +222,10 @@ def create_router() -> Router:
     router.message.register(on_diff, Command("diff"))
     router.message.register(on_subscribe, Command("subscribe"))
     router.message.register(on_unsubscribe, Command("unsubscribe"))
-    router.message.register(on_document, F.document)
-    router.message.register(on_text, F.text & ~F.text.startswith("/"))
-    router.message.register(on_anything_else)
+    # Plain text and files are for the bot only in a private chat; in a group they are just talk.
+    private = F.chat.type == "private"
+    router.message.register(on_document, private, F.document)
+    router.message.register(on_text, private, F.text & ~F.text.startswith("/"))
+    router.message.register(on_anything_else, private)
     router.callback_query.register(on_rate_button, kb.RateCb.filter())
     return router

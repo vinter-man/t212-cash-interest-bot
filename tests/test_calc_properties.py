@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import math
 from decimal import Decimal
 
-from hypothesis import given, settings
+import pytest
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from cash_interest.calc import CENT, first_payment_day, simulate
+from cash_interest.calc import CENT, MAX_DAYS, first_payment_day, simulate
 from cash_interest.calc.interest import QUANTUM
 
 balances = st.decimals(min_value=0, max_value=10_000_000, places=2, allow_nan=False, allow_infinity=False)
@@ -55,7 +57,20 @@ def test_rounding_only_ever_delays_money(balance: Decimal, apy: Decimal, days: i
 def test_the_first_payment_day_matches_the_simulation(balance: Decimal, apy: Decimal) -> None:
     first = first_payment_day(balance, apy)
     assert first is not None
-    if first <= 400:
-        days = simulate(balance, apy, first).days
-        assert days[-1].paid > 0
-        assert all(d.paid == 0 for d in days[:-1])
+    assume(first <= 400)  # longer waits are the explicit cases below
+    days = simulate(balance, apy, first).days
+    assert days[-1].paid > 0
+    assert all(d.paid == 0 for d in days[:-1])
+
+
+@pytest.mark.parametrize(
+    ("balance", "apy", "day"), [("1", "0.0025", 1463), ("0.50", "0.005", 1465), ("0.01", "0.15", 2613)]
+)
+def test_the_first_payment_day_years_out(balance: str, apy: str, day: int) -> None:
+    """Waits of years, inside a ten-year simulation: the closed form, the simulated days and a
+    float estimate worked out separately, ceil(0.01 / daily interest), all agree."""
+    first = first_payment_day(Decimal(balance), Decimal(apy))
+    assert first == day
+    assert math.ceil(0.01 / (float(balance) * ((1 + float(apy)) ** (1 / 365.25) - 1))) == day
+    days = simulate(Decimal(balance), Decimal(apy), MAX_DAYS).days
+    assert next(d.n for d in days if d.paid) == day

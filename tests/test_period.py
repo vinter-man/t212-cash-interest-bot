@@ -39,9 +39,10 @@ def test_days(period: Period, start: date, days: int) -> None:
     assert period.days(start) == days
 
 
-def test_ten_years_always_fit_a_simulation() -> None:
-    longest = max(Period(10, "y").days(date(2026 + y, 1, 1)) for y in range(4))
-    assert longest <= MAX_DAYS
+def test_ten_years_from_any_day_fit_a_simulation() -> None:
+    """Every start in a four-year leap cycle, 29 February included."""
+    starts = [date.fromordinal(date(2028, 1, 1).toordinal() + n) for n in range(1461)]
+    assert max(Period(10, "y").days(start) for start in starts) == MAX_DAYS
 
 
 @pytest.mark.parametrize(("count", "unit"), [(0, "d"), (11, "y"), (121, "m"), (522, "w"), (MAX_DAYS + 1, "d")])

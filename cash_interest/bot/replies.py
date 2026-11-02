@@ -6,7 +6,7 @@ escape a full stop in `€1,234.56`.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
 from decimal import Decimal
 from html import escape
@@ -21,12 +21,16 @@ REPO = "https://github.com/vinter-man/t212-cash-interest-bot"
 FORMULA = (
     "https://helpcentre.trading212.com/hc/en-us/articles/40012428081949-How-is-interest-on-my-cash-calculated-and-paid"
 )
-TAX = (
-    "Trading 212 withholds tax only for residents of Cyprus (17% defence contribution and 2.65% "
-    "GHS). Everyone else is paid gross and declares it at home. The bot does not calculate tax."
-)
+TAX_ARTICLE = "https://helpcentre.trading212.com/hc/en-us/articles/15472255836957-Do-I-have-to-pay-taxes-on-the-earned-interest-on-cash"
+# What the help centre's tax article says for each company; the bot itself calculates no tax.
+TAX = {
+    Region.EU: "At Trading 212 Markets Ltd, tax residents of Cyprus pay a 17% withholding tax and 2.65% "
+    "GHS on the interest; everyone else is paid gross, and their own country may tax it. (At Trading "
+    "212 EU, the German company, interest tax is deducted automatically, though taxation may vary with "
+    "account type and trading activity.)",
+    Region.UK: "At Trading 212 UK Ltd, ISA interest is tax-free; otherwise it depends on where you are tax resident.",
+}
 DISCLAIMER = "Unofficial: not affiliated with Trading 212, and not financial advice."
-CAPTION_LIMIT = 1024
 
 
 def when(at: datetime) -> str:
@@ -38,9 +42,11 @@ def day(at: datetime) -> str:
 
 
 def provenance(quote: Quote) -> str:
-    """Where a rate came from and when: `App Store, 01 Nov 2026`."""
-    saved = ", a page saved in a browser" if quote.via == "upload" else ""
-    return f"{quote.source.label}{saved}, {day(quote.at)}"
+    """Where a rate came from and when: `App Store, 01 Nov 2026`. A saved page's date is the day
+    the owner sent it, which is all the bot knows about it."""
+    if quote.via == "upload":
+        return f"{quote.source.label}, a saved page sent {day(quote.at)}"
+    return f"{quote.source.label}, {day(quote.at)}"
 
 
 def source_line(state: SourceState) -> str:
@@ -49,7 +55,8 @@ def source_line(state: SourceState) -> str:
     if state.checked_at is None:
         return f"{name}: not checked yet"
     if state.failing_since is None:
-        return f"{name}: checked {when(state.checked_at)}"
+        sent = state.via == "upload"  # the bot read a page the owner sent; it checked nothing
+        return f"{name}: {'saved page sent' if sent else 'checked'} {when(state.checked_at)}"
     problem = escape(state.problem or "failed")
     if not state.rates:
         return f"{name}: no value since {when(state.failing_since)} ({problem})"
@@ -58,12 +65,19 @@ def source_line(state: SourceState) -> str:
     return f"{name}: stale since {when(state.failing_since)} ({problem}){read}"
 
 
-def names(sources: Sequence[SourceId]) -> str:
-    """Sources in prose; both website pages together are just "the website"."""
+def names(sources: Sequence[SourceId], stale: Collection[SourceId] = ()) -> str:
+    """Sources in prose; both website pages together are just "the website". Those in `stale`
+    say so."""
+
+    def label(name: str, *of: SourceId) -> str:
+        return f"{name} (stale)" if all(s in stale for s in of) else name
+
     website = [s for s in sources if s in (SourceId.SITE, SourceId.CARDS)]
-    parts = [s.label for s in sources if s not in website]
-    if website:
-        parts.insert(0, "the website" if len(website) == 2 else website[0].label)
+    parts = [label(s.label, s) for s in sources if s not in website]
+    if len(website) == 2:
+        parts.insert(0, "the website (stale)" if any(s in stale for s in website) else "the website")
+    elif website:
+        parts.insert(0, label(f"the {website[0].label} page", website[0]))
     return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
@@ -76,7 +90,8 @@ def says(sources: Sequence[SourceId]) -> str:
 
 
 def rate_caption(result: Answer, row: Row | None) -> str:
-    """The text under the chart. It repeats the chart's numbers, for search and screen readers."""
+    """The text under the chart: its figures again, all but the day-by-day cups, so the answer
+    can be read without the picture."""
     q, ccy, sim = result.quote, result.ccy, result.sim
     first = sim.days[0]
     lines = [
@@ -102,7 +117,7 @@ def rate_caption(result: Answer, row: Row | None) -> str:
     ]
     if row is not None and (differ := others(row, q)):
         said = "; ".join(f"{says(sources)} {pct(apy)}" for apy, sources in differ.items())
-        lines.append(f"⚠️ {said}. Tap below to recalculate.")
+        lines.append(f"⚠️ {said[0].upper()}{said[1:]}. Tap below to recalculate.")
     lines += ["", f"<i>Before tax. {DISCLAIMER}</i> /about"]
     return "\n".join(lines)
 
@@ -138,23 +153,34 @@ def rates_table(states: Mapping[SourceId, SourceState], region: Region) -> str:
     notes = [f"% a year (AER/APY). ≠ sources disagree{', * stale' if stale else ''}."]
     if diverging := [r.ccy for r in table if r.diverges]:
         notes.append(f"Disagreements: {', '.join(diverging)}. /diff has the details.")
-    return f"{head}\n<pre>{chr(10).join(lines)}</pre>\n" + "\n".join(notes) + f"\n\n<i>{footer}</i>"
+    return f"{head}\n<pre>{'\n'.join(lines)}</pre>\n" + "\n".join(notes) + f"\n\n<i>{footer}</i>"
 
 
 def _checked(state: SourceState) -> str:
     """When a source was last asked and, if that failed, why and how old its value is."""
     if state.checked_at is None:
         return "not checked yet"
+    if state.failing_since is None and state.via == "upload":
+        return f"saved page sent {when(state.checked_at)} UTC"
     text = f"checked {when(state.checked_at)} UTC"
     if state.failing_since is not None and state.ok_at is not None:
-        text += f" ({escape(state.problem or 'failed')}; this value is from {when(state.ok_at)} UTC)"
+        source = "a saved page sent" if state.via == "upload" else "a check at"
+        text += f" ({escape(state.problem or 'failed')}; this value is from {source} {when(state.ok_at)} UTC)"
     return text
 
 
 def diff(states: Mapping[SourceId, SourceState], region: Region) -> str:
+    answered = [source for source in ORDER if source in states and states[source].rates]
+    if not answered:
+        return "No source has answered yet, so there is nothing to compare. /rates shows the checks."
+    if len(answered) == 1:
+        return f"Only {answered[0].label} has answered so far, so there is nothing to compare yet."
     diverging = [row for row in rows(states) if row.diverges]
     if not diverging:
-        return f"All sources agree for the {region} view. /rates shows the table."
+        return (
+            f"No disagreement in the {region} view: every currency that more than one source quotes "
+            "has the same rate in each. /rates shows the table."
+        )
     blocks = [f"<b>Where the sources disagree · {region} view</b>"]
     for row in diverging:
         lines = [f"<b>{row.ccy}</b>"]
@@ -177,7 +203,8 @@ def change_alert(changes: Sequence[Change], states: Mapping[SourceId, SourceStat
     for source in ORDER:
         if ccy in states[source].rates:
             by_rate.setdefault(states[source].rates[ccy], []).append(source)
-    now = "; ".join(f"{pct(apy)} on {names(sources)}" for apy, sources in by_rate.items())
+    stale = {source for source, state in states.items() if state.stale}
+    now = "; ".join(f"{pct(apy)} on {names(sources, stale)}" for apy, sources in by_rate.items())
     lines += ["", f"Now: {now}.", f"<code>/rate {ccy} 10000</code> · <code>/unsubscribe {ccy}</code>"]
     return "\n".join(lines)
 
@@ -187,7 +214,7 @@ def subscribed(ccy: str, new: bool, quote: Quote | None) -> str:
     if not new:
         return f"You are already subscribed to {ccy}.{current}"
     return (
-        f"Subscribed to {ccy}: I will write when any source changes its {ccy} rate.{current}\n"
+        f"Subscribed to {ccy}: I will write when a check finds a new {ccy} rate at any source.{current}\n"
         f"<code>/unsubscribe {ccy}</code> to stop."
     )
 
@@ -227,7 +254,7 @@ def help_text(region: Region) -> str:
         "<code>EUR 20000 5y</code>.\n\n"
         "<b>/rates</b> — the table: each currency, each source, with disagreements marked\n"
         "<b>/diff</b> — the disagreements only, with when each source was last checked\n"
-        "<b>/subscribe EUR</b>, <b>/unsubscribe EUR</b> — a message when any source changes a rate; "
+        "<b>/subscribe EUR</b>, <b>/unsubscribe EUR</b> — a message when a check finds a new rate; "
         "<b>/subscribe</b> alone lists yours\n"
         "<b>/about</b> — the formula, the sources, tax and the fine print\n\n"
         f"{region} view. <i>{DISCLAIMER}</i>"
@@ -245,7 +272,7 @@ def about(region: Region, poll_hours: int) -> str:
         f'day, and what is paid is cash, so it compounds. <a href="{FORMULA}">Source</a>.\n\n'
         f"<b>The sources</b> ({region} view, {region.company}):\n{sources}\n"
         "If a source fails, the last value it gave is shown, marked stale, and no alert is sent.\n\n"
-        f"<b>Tax.</b> {TAX}\n\n"
+        f'<b>Tax.</b> {TAX[region]} The bot shows interest before tax. <a href="{TAX_ARTICLE}">Source</a>.\n\n'
         f'<a href="{REPO}">Source code</a>'
     )
 
@@ -255,7 +282,9 @@ def about(region: Region, poll_hours: int) -> str:
 
 def upload_done(source: SourceId, count: int, changes: Sequence[Change]) -> str:
     changed = "".join(f"\n{c.ccy}: {pct(c.old)} → {pct(c.new)}" for c in changes)
-    return f"Recorded {count} rates from {source.label}.{changed or ' Nothing changed.'}"
+    if not changes:
+        return f"Recorded {count} rates from {source.label}. Nothing changed."
+    return f"Recorded {count} rates from {source.label}. Different from before:{changed}\nSubscribers were not told."
 
 
 def upload_failed(reason: str) -> str:

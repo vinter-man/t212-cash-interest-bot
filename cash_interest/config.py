@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from cash_interest.sources import Region
@@ -21,10 +22,15 @@ class Settings(BaseSettings):
     region: Region = Region.EU
     # May send the bot saved trading212.com pages (see README). Optional.
     owner_id: int | None = None
-    log_level: str = "INFO"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     # Written by the heartbeat task, read by the Docker healthcheck.
     heartbeat_file: Path = Path("/tmp/cash-interest.heartbeat")  # noqa: S108 - tmpfs in the container
     # A self-hosted Bot API server, or the fake one the end-to-end test runs. Telegram's if unset.
     telegram_api: str | None = None
     # Set by the image build, so the log says which commit is running.
     git_sha: str = "unknown"
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _upper(cls, value: object) -> object:
+        return value.upper() if isinstance(value, str) else value

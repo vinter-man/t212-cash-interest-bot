@@ -5,14 +5,16 @@ from __future__ import annotations
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, ClassVar, Final
 
 import httpx
-from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, StringConstraints
+from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, StringConstraints, ValidationError
+
+from cash_interest.money import pct
 
 log = logging.getLogger(__name__)
 
@@ -117,13 +119,15 @@ def to_rates(found: dict[str, Decimal], source: SourceId, region: Region, fetche
     """`found` as Rates; an implausible number fails the whole page, never just its row."""
     if not found:
         raise ParseError("no rates on the page")
-    try:
-        return [
-            Rate(ccy=ccy, apy=apy, source=source, region=region, fetched_at=fetched_at)
-            for ccy, apy in sorted(found.items())
-        ]
-    except ValueError as error:
-        raise ParseError(f"implausible value: {error}") from error
+    rates = []
+    for ccy, apy in sorted(found.items()):
+        try:
+            rates.append(Rate(ccy=ccy, apy=apy, source=source, region=region, fetched_at=fetched_at))
+        except ValidationError as error:
+            if {problem["loc"][:1] for problem in error.errors()} != {("apy",)}:
+                raise  # anything but the number is a bug here, not something the page said
+            raise ParseError(f"implausible rate for {ccy}: {pct(apy)}") from None
+    return rates
 
 
 def utcnow() -> datetime:
@@ -138,7 +142,14 @@ def _is_bot_check(response: httpx.Response) -> bool:
     return "Just a moment..." in head or "challenge-platform" in response.text[-4000:]
 
 
-async def get(client: httpx.AsyncClient, url: str, *, attempts: int = ATTEMPTS, backoff: float = BACKOFF) -> bytes:
+async def get(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    attempts: int = ATTEMPTS,
+    backoff: float = BACKOFF,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> bytes:
     """One GET with a short, polite retry: network errors and 5xx only, waiting 2 s, then 4 s.
 
     A 403 or 429 is an answer, not an accident, so it is never retried.
@@ -161,7 +172,7 @@ async def get(client: httpx.AsyncClient, url: str, *, attempts: int = ATTEMPTS, 
         if attempt < attempts:
             delay = backoff * 2 ** (attempt - 1)
             log.info("%s: %s, retrying in %.0f s", url, problem, delay)
-            await asyncio.sleep(delay)
+            await sleep(delay)
     raise problem
 
 

@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import io
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from importlib import resources
 from typing import Any
 
@@ -48,7 +50,6 @@ def _register_fonts() -> str:
 
 
 FAMILY = _register_fonts()
-# rcParams are global: one chart at a time, so two answers rendering at once cannot mix styles.
 _LOCK = threading.Lock()
 STYLE: dict[str, Any] = {
     "font.family": FAMILY,
@@ -62,6 +63,23 @@ STYLE: dict[str, Any] = {
 }
 # A tick label needs this much of the axis to itself.
 LABEL_GAP = 0.1
+# IBM Plex Mono's advance width, in ems: every glyph is the same width, so text can be fitted.
+ADVANCE = 0.6
+# The cups strip: x from -2.4 (the row names) to CUPS, across the page between the margins.
+CUP_INCHES = (WIDTH - 1.1) / (CUPS + 2.4)
+
+
+@contextmanager
+def drawing() -> Iterator[None]:
+    """Matplotlib's style for one chart at a time: rcParams are global, so two answers drawing
+    at once must not mix them."""
+    with _LOCK, mpl.rc_context(STYLE):  # type: ignore[arg-type]  # keys checked against a Literal list
+        yield
+
+
+def _fit(text: str, inches: float, size: float) -> float:
+    """`size`, or smaller if the text would not fit in `inches`: €99,999,999.99 still fits a tile."""
+    return min(size, inches * 72 / (ADVANCE * max(len(text), 1)))
 
 
 def _y(inches_from_top: float) -> float:
@@ -77,10 +95,11 @@ def _milestones(fig: Figure, result: Answer) -> None:
     tiles = [(f"after {m.label}", f"+{money(m.paid, result.ccy)}") for m in result.milestones]
     tiles.append((f"balance after {result.period.label}", money(result.sim.balance, result.ccy)))
     step = (WIDTH - 1.1) / len(tiles)
+    room = step - 0.25
     for n, (label, value) in enumerate(tiles):
         x = (0.6 + n * step) / WIDTH
-        fig.text(x, _y(1.55), label, fontsize=11, color=GREY)
-        fig.text(x, _y(1.98), value, fontsize=19 if len(tiles) < 4 else 17, fontweight="semibold")
+        fig.text(x, _y(1.55), label, fontsize=_fit(label, room, 11), color=GREY)
+        fig.text(x, _y(1.98), value, fontsize=_fit(value, room, 19 if len(tiles) < 4 else 17), fontweight="semibold")
 
 
 def _growth(fig: Figure, result: Answer) -> None:
@@ -118,7 +137,8 @@ def _growth(fig: Figure, result: Answer) -> None:
 
 def _cups(fig: Figure, result: Answer) -> None:
     days = result.sim.days[:CUPS]
-    fig.text(0.6 / WIDTH, _y(6.05), f"The first {len(days)} days, to the cent", fontsize=13, fontweight="semibold")
+    heading = "The first day, to the cent" if len(days) == 1 else f"The first {len(days)} days, to the cent"
+    fig.text(0.6 / WIDTH, _y(6.05), heading, fontsize=13, fontweight="semibold")
     fig.text(0.6 / WIDTH, _y(6.4), "Each cup is one cent. Whatever does not fill a cent is carried to the next day.",
              fontsize=10.5, color=GREY)  # fmt: skip
     ax = _axes(fig, top=6.6, height=1.3)
@@ -135,33 +155,38 @@ def _cups(fig: Figure, result: Answer) -> None:
             ax.add_patch(Rectangle((x, 0), 0.64, level, facecolor=PAPER, edgecolor=INK, hatch="////", linewidth=0))
         (cup,) = ax.plot([x, x, x + 0.64, x + 0.64], [1, 0, 0, 1], color=INK, linewidth=1.3)
         cup.set_sketch_params(*SKETCH)
-        paid = f"{day.paid:,.2f}"
-        ax.text(x + 0.32, 1.32, paid, ha="center", va="center", fontsize=10 if len(paid) <= 5 else 8.5,
+        paid = f"{day.paid:.2f}"  # no thousands separator: a cup is narrow
+        ax.text(x + 0.32, 1.32, paid, ha="center", va="center", fontsize=_fit(paid, CUP_INCHES * 0.9, 10),
                 color=INK if day.paid else FAINT, fontweight="semibold" if day.paid else "normal")  # fmt: skip
         ax.text(x + 0.32, -0.3, str(day.n), ha="center", va="center", fontsize=10, color=GREY)
 
 
+def draw(result: Answer, region: Region) -> Figure:
+    """The chart as a Figure, for `rate_chart` and for tests that measure it. Call it inside
+    `drawing()`: the fonts and sizes are taken from the style when each text is created."""
+    quote, width = result.quote, WIDTH - 1.1
+    fig = Figure(figsize=(WIDTH, HEIGHT), dpi=DPI)
+    fig.patch.set_facecolor(PAPER)
+    title = f"{whole(result.amount, result.ccy)} at {pct(quote.apy)} for {result.period.label}"
+    fig.text(0.6 / WIDTH, _y(0.62), title, fontsize=_fit(title, width, 19), fontweight="semibold")
+    stale = " (stale)" if quote.stale else ""
+    subtitle = f"{region} view · {quote.source.label}, {quote.at:%d %b %Y}{stale} · paid daily, compounding"
+    fig.text(0.6 / WIDTH, _y(0.98), subtitle, fontsize=_fit(subtitle, width, 11), color=GREY)
+    _milestones(fig, result)
+    _growth(fig, result)
+    _cups(fig, result)
+    footer = (
+        f"Rounding down: {fraction(result.sim.carried, result.ccy)} still carried at the end, "
+        f"{fraction(result.missed, result.ccy)} of compounding missed."
+    )
+    fig.text(0.6 / WIDTH, _y(8.2), footer, fontsize=_fit(footer, width, 10.5), color=GREY)
+    fig.text(0.6 / WIDTH, _y(8.45), "Before tax. Unofficial, not financial advice.", fontsize=10.5, color=GREY)
+    return fig
+
+
 def rate_chart(result: Answer, region: Region) -> bytes:
     """PNG of one /rate answer."""
-    quote = result.quote
-    with _LOCK, mpl.rc_context(STYLE):  # type: ignore[arg-type]  # keys checked against a Literal list
-        fig = Figure(figsize=(WIDTH, HEIGHT), dpi=DPI)
-        fig.patch.set_facecolor(PAPER)
-        title = f"{whole(result.amount, result.ccy)} at {pct(quote.apy)} for {result.period.label}"
-        fig.text(0.6 / WIDTH, _y(0.62), title, fontsize=19, fontweight="semibold")
-        checked = quote.at.strftime("%d %b %Y")
-        fig.text(0.6 / WIDTH, _y(0.98), f"{region} view · {quote.source.label}, {checked}"
-                 f"{' (stale)' if quote.stale else ''} · paid daily, compounding", fontsize=11, color=GREY)  # fmt: skip
-        _milestones(fig, result)
-        _growth(fig, result)
-        _cups(fig, result)
-        sim = result.sim
-        footer = (
-            f"Rounding down: {fraction(sim.carried, result.ccy)} still carried at the end, "
-            f"{fraction(result.missed, result.ccy)} of compounding missed."
-        )
-        fig.text(0.6 / WIDTH, _y(8.2), footer, fontsize=10.5, color=GREY)
-        fig.text(0.6 / WIDTH, _y(8.45), "Before tax. Unofficial, not financial advice.", fontsize=10.5, color=GREY)
+    with drawing():
         buffer = io.BytesIO()
-        fig.savefig(buffer, format="png", facecolor=PAPER)
+        draw(result, region).savefig(buffer, format="png", facecolor=PAPER)
     return buffer.getvalue()

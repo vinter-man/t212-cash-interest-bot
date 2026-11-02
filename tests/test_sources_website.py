@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from cash_interest.sources import ParseError, Region, SourceId
 from cash_interest.sources.website import Cards, InterestOnCash, page_rates, page_source, rates_table
@@ -113,8 +114,14 @@ class TestBrokenPages:
     def test_an_implausible_rate_fails_the_whole_page(self) -> None:
         """25% is a parser reading the wrong field: no rate from this page is trusted."""
         page = html().replace('"T212CY":{"CZK":0.03', '"T212CY":{"CZK":0.25', 1)
-        with pytest.raises(ParseError, match="implausible"):
+        with pytest.raises(ParseError) as caught:
             parse(page)
+        assert str(caught.value) == "implausible rate for CZK: 25%"
+
+    def test_a_bug_is_not_blamed_on_the_page(self) -> None:
+        """Only the number can be implausible; a naive timestamp is the caller's mistake."""
+        with pytest.raises(ValidationError, match="fetched_at"):
+            page_rates(html(), SourceId.SITE, Region.EU, NOW.replace(tzinfo=None))
 
     def test_a_rate_written_as_text(self) -> None:
         page = html().replace('"T212CY":{"CZK":0.03', '"T212CY":{"CZK":"3%"', 1)

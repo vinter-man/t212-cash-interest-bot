@@ -27,14 +27,17 @@ The forced command means a session with that key runs `deploy.sh` and exits, wha
 client asks for; a leaked secret buys an attacker a redeploy of this repository's `main` and
 nothing else.
 
-## Repository secrets
+## Repository secrets and variables
 
 | Secret | What it is |
 |---|---|
 | `DEPLOY_HOST` | the server's address |
-| `DEPLOY_USER` | `deploy` |
 | `DEPLOY_SSH_KEY` | the private half of `cash_interest_ci` |
 | `DEPLOY_HOST_KEY` | `ssh-keyscan -t ed25519 YOUR_SERVER`, pinned so the first connection cannot be intercepted |
+
+| Variable | What it is |
+|---|---|
+| `DEPLOY_USER` | `deploy`: not a secret, and as one GitHub would mask the word in every log line |
 
 ## What a push to `main` does
 
@@ -57,4 +60,5 @@ To deploy by hand: `ssh -i cash_interest_ci deploy@YOUR_SERVER` (or with a sha a
 trading212.com answers anything that is not a browser with a bot check, and the bot does not
 pretend to be one. To refresh the website's rates, open the page in a browser, save it
 (`Save Page As…`, HTML), and send the file to the bot from the `OWNER_ID` account. It reads the
-same JSON the live check would and records it as "a page saved in a browser".
+same JSON the live check would, records it as "a saved page sent" that day, and replies with
+whatever differs from before. Subscribers are not alerted: the bot cannot tell how old the page is.

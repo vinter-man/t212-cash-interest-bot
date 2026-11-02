@@ -2,8 +2,8 @@
 
 A failed check is recorded and nothing else happens: the last good rates stay on show, marked
 stale, and nobody is notified. Only a successful check that disagrees with the previous
-successful check of the same source is a change, so a parser that breaks, a page that is
-blocked, or a currency that drops out of a listing never sends an alert.
+successful live check of the same source is a change, so a parser that breaks, a page that is
+blocked, a page the owner sends, or a currency that drops out of a listing never sends an alert.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from cash_interest.sources import Blocked, FetchError, ParseError, Rate, Region, Source, SourceId, Unavailable
+from cash_interest.sources import Blocked, FetchError, ParseError, Source, SourceId, Unavailable
 from cash_interest.store import Change, Status, Store
 
 log = logging.getLogger(__name__)
@@ -43,15 +43,6 @@ def status_of(error: FetchError) -> Status:
     return Status.ERROR
 
 
-async def save(
-    store: Store, source: SourceId, region: Region, rates: Sequence[Rate], *, at: datetime, via: str = "http"
-) -> list[Change]:
-    changes = await store.record(source, region, rates, at=at, via=via)
-    for change in changes:
-        log.info("%s %s: %s -> %s", source, change.ccy, change.old, change.new)
-    return changes
-
-
 async def poll(
     store: Store,
     sources: Iterable[Source],
@@ -73,8 +64,16 @@ async def poll(
             log.exception("%s: unexpected error", source.id)
             await store.record_failure(source.id, source.region, Status.ERROR, type(error).__name__, at=clock())
             continue
+        try:
+            changes = await store.record(source.id, source.region, rates, at=rates[0].fetched_at)
+        except Exception:  # the database, not the source: the other sources still get their turn
+            report.failed[source.id] = "not recorded"
+            log.exception("%s: could not record the rates", source.id)
+            continue
         report.found[source.id] = len(rates)
-        report.changes += await save(store, source.id, source.region, rates, at=rates[0].fetched_at)
+        report.changes += changes
+        for change in changes:
+            log.info("%s %s: %s -> %s", source.id, change.ccy, change.old, change.new)
     log.info("poll: %s", report.summary())
     if report.changes and notify is not None:
         await notify(report.changes)

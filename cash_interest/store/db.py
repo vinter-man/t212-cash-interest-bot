@@ -58,7 +58,8 @@ class Status(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Change:
-    """A source now publishes a different rate than at its previous successful check."""
+    """A source now publishes a different rate than at its previous successful live check (or,
+    for a saved page, than what was on show)."""
 
     source: SourceId
     region: Region
@@ -104,10 +105,12 @@ class Store:
             await self.db.commit()
             return cursor
 
-    async def _last_ok(self, source: SourceId, region: Region) -> tuple[int, str, str] | None:
+    async def _last_ok(self, source: SourceId, region: Region, via: str | None = None) -> tuple[int, str, str] | None:
+        """The latest successful check, or the latest that arrived `via` "http" or "upload"."""
         cursor = await self.db.execute(
-            "SELECT id, at, via FROM checks WHERE source = ? AND region = ? AND status = 'ok' ORDER BY id DESC LIMIT 1",
-            (source, region),
+            "SELECT id, at, via FROM checks WHERE source = ? AND region = ? AND status = 'ok' "
+            "AND (? IS NULL OR via = ?) ORDER BY id DESC LIMIT 1",
+            (source, region, via, via),
         )
         row = await cursor.fetchone()
         return (int(row[0]), str(row[1]), str(row[2])) if row else None
@@ -119,23 +122,33 @@ class Store:
     async def record(
         self, source: SourceId, region: Region, rates: Sequence[Rate], *, at: datetime, via: str = "http"
     ) -> list[Change]:
-        """A successful check. Returns what changed since the previous successful one: a currency
-        seen for the first time, or one the source stopped listing, is not a change."""
+        """A successful check. Returns what changed since the previous one: a currency seen for the
+        first time, or one the source stopped listing, is not a change.
+
+        A live check is compared with the previous live check, never with a saved page: a page of
+        unknown age in between must not turn into a second alert for a change already reported.
+        A saved page is compared with whatever was last on show, because that is what its sender
+        wants to know.
+        """
         if any(r.source != source or r.region != region for r in rates):
             raise ValueError(f"rates from another source or region recorded as {source}/{region}")
         async with self._writing:
-            previous = await self._last_ok(source, region)
+            previous = await self._last_ok(source, region, via="http" if via == "http" else None)
             before = await self._rates(previous[0]) if previous else {}
-            cursor = await self.db.execute(
-                "INSERT INTO checks (source, region, at, status, via) VALUES (?, ?, ?, 'ok', ?)",
-                (source, region, at.isoformat(), via),
-            )
-            check_id = cursor.lastrowid
-            await self.db.executemany(
-                "INSERT INTO rates (check_id, ccy, apy) VALUES (?, ?, ?)",
-                [(check_id, r.ccy, str(r.apy.normalize())) for r in rates],
-            )
-            await self.db.commit()
+            try:
+                cursor = await self.db.execute(
+                    "INSERT INTO checks (source, region, at, status, via) VALUES (?, ?, ?, 'ok', ?)",
+                    (source, region, at.isoformat(), via),
+                )
+                await self.db.executemany(
+                    "INSERT INTO rates (check_id, ccy, apy) VALUES (?, ?, ?)",
+                    [(cursor.lastrowid, r.ccy, str(r.apy.normalize())) for r in rates],
+                )
+                await self.db.commit()
+            except BaseException:
+                # A check without its rates would become the baseline for the next comparison.
+                await self.db.rollback()
+                raise
         return [
             Change(source, region, r.ccy, before[r.ccy], r.apy, at)
             for r in rates

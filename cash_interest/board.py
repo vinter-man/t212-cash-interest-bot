@@ -61,7 +61,8 @@ def currency_order(currencies: Iterable[str]) -> list[str]:
     return [c for c in FIRST if c in unique] + sorted(unique - set(FIRST))
 
 
-def quotes(state: SourceState) -> dict[str, Quote]:
+def by_currency(state: SourceState) -> dict[str, Quote]:
+    """One source's quotes, keyed by currency (a Row's are keyed by source)."""
     if state.ok_at is None:
         return {}
     return {ccy: Quote(state.source, apy, state.ok_at, state.stale, state.via) for ccy, apy in state.rates.items()}
@@ -69,7 +70,7 @@ def quotes(state: SourceState) -> dict[str, Quote]:
 
 def rows(states: Mapping[SourceId, SourceState]) -> list[Row]:
     """Every currency any source quotes, each with the sources that quote it, in ORDER."""
-    by_source = {source: quotes(states[source]) for source in ORDER if source in states}
+    by_source = {source: by_currency(states[source]) for source in ORDER if source in states}
     currencies = currency_order(ccy for found in by_source.values() for ccy in found)
     return [Row(ccy, {source: found[ccy] for source, found in by_source.items() if ccy in found}) for ccy in currencies]
 
@@ -77,7 +78,7 @@ def rows(states: Mapping[SourceId, SourceState]) -> list[Row]:
 def pick(states: Mapping[SourceId, SourceState], ccy: str, prefer: SourceId | None = None) -> Quote | None:
     """The rate to calculate with: `prefer` if it has one, else the first fresh quote in ORDER,
     else the first stale one. A stale rate is still the last thing that source published."""
-    found = [q for source in ORDER if source in states and (q := quotes(states[source]).get(ccy))]
+    found = [q for source in ORDER if source in states and (q := by_currency(states[source]).get(ccy))]
     for quote in found:
         if quote.source == prefer:
             return quote

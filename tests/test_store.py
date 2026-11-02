@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -33,6 +34,17 @@ async def test_the_same_value_written_differently_is_not_a_change(store: Store) 
     assert await store.record(APP, Region.EU, rates(APP, {"USD": "0.033"}), at=LATER) == []
 
 
+async def test_a_saved_page_in_between_does_not_repeat_an_alert(store: Store) -> None:
+    """Live 2.2 -> live 2.5 is one alert. An old page saying 2.2 arrives; the owner hears that it
+    differs from what was on show. The next live 2.5 is no news to subscribers."""
+    site = SourceId.SITE
+    await store.record(site, Region.EU, rates(site, {"EUR": "0.022"}), at=NOW)
+    assert len(await store.record(site, Region.EU, rates(site, {"EUR": "0.025"}), at=LATER)) == 1
+    upload = await store.record(site, Region.EU, rates(site, {"EUR": "0.022"}), at=LATER, via="upload")
+    assert [(c.old, c.new) for c in upload] == [(Decimal("0.025"), Decimal("0.022"))]
+    assert await store.record(site, Region.EU, rates(site, {"EUR": "0.025"}), at=LATEST) == []
+
+
 async def test_currencies_that_appear_or_disappear_are_not_changes(store: Store) -> None:
     await store.record(APP, Region.EU, rates(APP, {"EUR": "0.022", "USD": "0.033"}), at=NOW)
     assert await store.record(APP, Region.EU, rates(APP, {"EUR": "0.022", "GBP": "0.038"}), at=LATER) == []
@@ -58,6 +70,18 @@ async def test_regions_and_sources_are_kept_apart(store: Store) -> None:
 async def test_rates_must_belong_to_the_source_they_are_recorded_for(store: Store) -> None:
     with pytest.raises(ValueError, match="another source"):
         await store.record(SourceId.SITE, Region.EU, rates(APP, {"EUR": "0.022"}), at=NOW)
+
+
+async def test_a_check_is_written_whole_or_not_at_all(store: Store) -> None:
+    """If the rates cannot be written, the check row goes too, or it would become the baseline
+    the next check is compared with."""
+    await store.record(APP, Region.EU, rates(APP, {"EUR": "0.022"}), at=NOW)
+    twice = rates(APP, {"EUR": "0.030"}, at=LATER) * 2
+    with pytest.raises(sqlite3.IntegrityError):
+        await store.record(APP, Region.EU, twice, at=LATER)
+    await store.subscribe(1, "EUR", at=LATER)  # the next write must not commit half a check
+    state = await store.state(APP, Region.EU)
+    assert (state.ok_at, state.rates) == (NOW, {"EUR": Decimal("0.022")})
 
 
 async def test_a_failure_needs_a_failing_status(store: Store) -> None:

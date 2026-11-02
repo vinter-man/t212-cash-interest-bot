@@ -75,11 +75,13 @@ jobs:
       - name: Deploy over SSH
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
-          USER: ${{ secrets.DEPLOY_USER }}
+          # A variable, not a secret: GitHub masks a secret's value in every log line, even "deployed".
+          USER: ${{ vars.DEPLOY_USER }}
           KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
         run: |
           test -n "$HOST" || { echo "DEPLOY_HOST is not set"; exit 1; }
+          test -n "$USER" || { echo "DEPLOY_USER is not set"; exit 1; }
           install -d -m 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519

@@ -1,4 +1,4 @@
-"""Shared fixtures: the saved pages, a fixed clock, and an in-memory store."""
+"""Shared fixtures: the saved pages, the moment they were saved, and an in-memory store."""
 
 from __future__ import annotations
 
