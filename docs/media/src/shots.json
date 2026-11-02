@@ -97,22 +97,5 @@
         "keyboard": []
       }
     }
-  ],
-  "subscribe": [
-    {
-      "out": "/subscribe EUR"
-    },
-    {
-      "in": {
-        "html": "Subscribed to EUR: I will write when a check finds a new EUR rate at any source. Now: 2.5% (trading212.com/interest-on-cash, a saved page sent 01 Nov 2026).\n<code>/unsubscribe EUR</code> to stop.",
-        "keyboard": []
-      }
-    },
-    {
-      "in": {
-        "html": "<b>EUR rate changed</b> (EU view)\n▲ App Store: 2.2% → <b>2.5%</b>\n\nNow: 2.5% on the website and App Store; 2.2% on Google Play.\n<code>/rate EUR 10000</code> · <code>/unsubscribe EUR</code>",
-        "keyboard": []
-      }
-    }
   ]
 }
